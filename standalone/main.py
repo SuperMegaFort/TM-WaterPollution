@@ -81,7 +81,7 @@ class WaterWatcherApp:
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN
         )
 
-        self.chart_container = ft.Container(padding=10, height=350, border_radius=10, bgcolor=ft.Colors.WHITE05)
+        self.chart_container = ft.Container(padding=10, height=350, border_radius=10, bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.WHITE))
         
         self.range_slider_container = ft.Container(
             padding=ft.padding.symmetric(horizontal=30, vertical=10),
