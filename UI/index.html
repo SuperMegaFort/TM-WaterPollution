@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WaterWatcher - Prototype</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- HEADER -->
+        <header class="glass-header">
+            <div class="logo">
+                <div class="icon">💧</div>
+                <h1>Classification des eaux <span class="badge">Proto</span></h1>
+            </div>
+            <div class="actions">
+                <input type="file" id="import-input" multiple accept="image/*" style="display:none;">
+                <label for="import-input" class="btn btn-primary">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    Sélectionner Images
+                </label>
+                <button id="export-btn" class="btn btn-secondary" disabled>
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Exporter Labels
+                </button>
+            </div>
+        </header>
+
+
+
+        <main class="content">
+            <div class="empty-state" id="empty-state">
+                <p>Aucune séquence chargée. Importez vos images pour lancer l'analyse.</p>
+            </div>
+
+            <div id="main-interface" style="display:none; flex-direction: column; gap: 20px;">
+
+                <!-- LOADING SCREEN (IA EVALUATION) -->
+                <div id="loading-screen" style="display:none; position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); z-index: 10000; flex-direction: column; align-items: center; justify-content: center; color: white;">
+                    <style>
+                        @keyframes spinAI { to { transform: rotate(360deg); } }
+                        .ai-spinner { width: 60px; height: 60px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--color-clean); border-radius: 50%; animation: spinAI 1s infinite linear; margin-bottom: 20px;}
+                    </style>
+                    <div class="ai-spinner"></div>
+                    <h2 style="font-size: 24px; margin-bottom: 10px;">Évaluation IA en cours...</h2>
+                    <p style="color: #94a3b8; font-size: 16px;">Analyse par le modèle de <span id="loading-count" style="color: white; font-weight: bold;">0</span> images.</p>
+                </div>
+
+                <!-- CHART SECTION (Top) -->
+                <section class="chart-section glass-panel">
+                    <div class="section-header">
+                        <h2>Confiance du Modèle & Événements</h2>
+                        <div class="hints">
+                            <span class="hint-badge polluted">Fond Orange = Pollution Détectée</span>
+                            <span class="hint-text">💡 Cliquez dans une zone du graphique pour afficher les images
+                                correspondantes en dessous.</span>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="pollutionChart"></canvas>
+                    </div>
+
+                    <!-- TIMELINE & SLIDER SYNCHRONISÉS (Sous le Graphique) -->
+                    <div id="mini-timeline-container" style="display:none; position: relative; overflow: visible; z-index: 10000;">
+                        <!-- Barre de réglage de Zone -->
+                        <div class="range-slider-wrapper" id="range-wrapper" style="display:none; margin-top: 15px; margin-bottom: 10px;">
+                            <div class="slider-track" id="slider-track"></div>
+                            <input type="range" id="slider-min" class="range-input" min="0" max="100" value="0" step="1">
+                            <input type="range" id="slider-max" class="range-input" min="0" max="100" value="100" step="1">
+                        </div>
+                        
+                        <!-- Timeline en bas avec axe des X commun -->
+                        <div class="scrubber-wrapper" id="scrubber-wrapper">
+                            <div class="mini-timeline-track" id="mini-track">
+                                <!-- Filmstrip statique -->
+                            </div>
+                            <!-- AXE X DE LA TIMELINE -->
+                            <div class="timeline-axis" id="timeline-axis"></div>
+                            
+                            <!-- Aperçu Flottant Mobile -->
+                            <div id="scrub-preview" class="scrub-preview">
+                                <img id="preview-img" src="" alt="Aperçu">
+                                <div id="preview-info" class="preview-info">Nom_Image.jpg</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- GRID SECTION (Bottom) -->
+                <section class="grid-section glass-panel" id="zone-section" style="display:none;">
+                    <div class="section-header">
+                        <h2>Zone sélectionnée : <span id="zone-title" style="color:var(--color-clean);"></span></h2>
+                        <div class="hints">
+                            <span class="hint-text">💡 Cliquez sur n'importe quelle image ci-dessous pour forcer ou
+                                annuler une pollution.</span>
+                        </div>
+                    </div>
+
+                    <div class="image-grid-scroll">
+                        <div class="image-grid" id="image-grid">
+                            <!-- Grosses images injectées ici -->
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL D'AGRANDISSEMENT D'IMAGE -->
+    <div id="image-modal" class="glass-modal" style="display: none;">
+        <span class="close-modal" id="close-modal">&times;</span>
+        <img class="modal-content" id="modal-img">
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

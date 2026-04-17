@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-def consolider_datasets(dossier_images, fichier_csv_ml, fichier_csv_ziplo, fichier_sortie):
+def consolider_datasets(dossier_images, fichier_csv_ml, fichier_csv_ziplo, fichier_csv_aire, fichier_sortie):
     print("1. Chargement des CSV existants...")
     
     dictionnaire_classes = {}
@@ -31,6 +31,17 @@ def consolider_datasets(dossier_images, fichier_csv_ml, fichier_csv_ziplo, fichi
         print(f"   -> {len(df_ziplo)} images chargées depuis {fichier_csv_ziplo}")
     else:
         print(f"   -> Attention: {fichier_csv_ziplo} introuvable.")
+    if os.path.exists(fichier_csv_aire):
+        df_aire = pd.read_csv(fichier_csv_aire)
+        for _, row in df_aire.iterrows():
+            nom_img = row['Nom_Image']
+            classe_aire = row['Classe']
+            
+            if nom_img in dictionnaire_classes:
+                dictionnaire_classes[nom_img] = max(dictionnaire_classes[nom_img], classe_aire)
+            else:
+                dictionnaire_classes[nom_img] = classe_aire
+        print(f"   -> {len(df_aire)} images chargées depuis {fichier_csv_aire}")
         
     print(f"\n2. Parcours du dossier d'images : {dossier_images}")
     donnees_finales = []
@@ -71,10 +82,11 @@ dossier_des_images = "/Users/cyriltelley/Desktop/MSE/Third_semester/TM-WaterPoll
 
 # Mets ici les chemins exacts vers les CSV que tu as générés précédemment
 fichier_ml = "dataset_ml_final.csv"  
-fichier_ziplo = "dataset_ziplo.csv"  
+fichier_ziplo = "dataset_ziplo.csv"
+fichier_aire = "mapping_pollution.csv"  # Si tu veux aussi intégrer les données de l'Aire (optionnel)
 
 # Le nom de ton fichier ultime pour le Machine Learning
 fichier_csv_final = "dataset_complet.csv"
 
 # --- Lancement ---
-consolider_datasets(dossier_des_images, fichier_ml, fichier_ziplo, fichier_csv_final)
+consolider_datasets(dossier_des_images, fichier_ml, fichier_ziplo, fichier_aire, fichier_csv_final)

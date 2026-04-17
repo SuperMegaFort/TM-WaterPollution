@@ -9,7 +9,6 @@ def associer_pollution_ziplo(dossier_images, fichier_csv, fichier_sortie):
     # Lire le fichier CSV
     df_poll = pd.read_csv(fichier_csv)
     
-    # CORRECTION ICI : Ajout de errors='coerce'
     # Cela va forcer la conversion. Si c'est écrit "Nuit", ça deviendra 'NaT' (Not a Time)
     df_poll['Debut_dt'] = pd.to_datetime(df_poll['Date'] + ' ' + df_poll['Heure début'], format='%d.%m.%Y %H:%M', errors='coerce')
     df_poll['Fin_dt'] = pd.to_datetime(df_poll['Date'] + ' ' + df_poll['Heure fin'], format='%d.%m.%Y %H:%M', errors='coerce')
@@ -19,8 +18,8 @@ def associer_pollution_ziplo(dossier_images, fichier_csv, fichier_sortie):
     
     print(f"2. Parcours du dossier d'images : {dossier_images}")
     donnees_finales = []
-    images_trouvees = 0
-    images_ignorees = 0
+    images_polluees = 0
+    images_propres = 0
     
     for nom_fichier in os.listdir(dossier_images):
         nom_minuscule = nom_fichier.lower()
@@ -47,7 +46,8 @@ def associer_pollution_ziplo(dossier_images, fichier_csv, fichier_sortie):
                     )
                     
                     # Chercher si la date de l'image tombe PILE dans un intervalle de pollution
-                    match_intervalle = df_poll[(df_poll['Debut_dt'] <= date_image) & (date_image <= df_poll['Fin_dt'])]
+                    # CORRECTION ICI : Utilisation de "<" pour Fin_dt afin d'éviter les doublons sur les heures exactes (ex: 07:30:00)
+                    match_intervalle = df_poll[(df_poll['Debut_dt'] <= date_image) & (date_image < df_poll['Fin_dt'])]
                     
                     if not match_intervalle.empty:
                         classe_pollution = int(match_intervalle.iloc[0]['Pullution'])
@@ -55,9 +55,14 @@ def associer_pollution_ziplo(dossier_images, fichier_csv, fichier_sortie):
                             "Nom_Image": nom_fichier,
                             "Classe": classe_pollution
                         })
-                        images_trouvees += 1
+                        images_polluees += 1
                     else:
-                        images_ignorees += 1
+                        # CORRECTION ICI : S'il n'y a pas de numéro/intervalle, c'est de l'eau propre (0)
+                        donnees_finales.append({
+                            "Nom_Image": nom_fichier,
+                            "Classe": 0
+                        })
+                        images_propres += 1
                         
                 except Exception as e:
                     pass
@@ -67,13 +72,12 @@ def associer_pollution_ziplo(dossier_images, fichier_csv, fichier_sortie):
     
     if not df_final.empty:
         df_final.to_csv(fichier_sortie, index=False)
-        print(f"Succès ! {images_trouvees} images polluées Ziplo ont été associées à leur classe.")
-        print(f"Fichier généré : {fichier_sortie}")
+        print(f"Succès ! Fichier généré : {fichier_sortie}")
+        print(f"-> {images_polluees} images polluées (classes > 0)")
+        print(f"-> {images_propres} images d'eau propre (classe 0)")
+        print(f"Total : {images_polluees + images_propres} images traitées et labellisées.")
     else:
-        print("Attention : Aucune image ne correspondait aux intervalles de temps.")
-        
-    if images_ignorees > 0:
-        print(f"Note : {images_ignorees} images Ziplo ont été ignorées (pas de pollution signalée à leur heure exacte).")
+        print("Attention : Aucune image traitée.")
 
 # --- PARAMÈTRES ---
 dossier_des_images = "/Users/cyriltelley/Desktop/MSE/Third_semester/TM-WaterPollution/data"

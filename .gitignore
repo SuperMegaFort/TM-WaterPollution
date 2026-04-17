@@ -1,4 +1,47 @@
-/data
-/dataset
-/deteted_image
-/Photos
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env
+.conda/
+
+# Build & Standalone
+build/
+dist/
+*.spec
+
+# Datasets & Large Files (Zips)
+*.zip
+Photos/
+data/
+data_masked/
+data_preprocessed/
+data_preprocessed_multiclass/
+data_proto/
+dataset/
+deteted_image/
+mask/
+ground_truth/
+resultat/
+
+# Models (Too large for Git)
+models/
+*.pth
+*.pt
+
+# Evaluation & Temporary
+evaluation_results/
+temp_test.csv
+
+# IDE
+.vscode/
+.idea/
