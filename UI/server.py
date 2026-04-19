@@ -2,11 +2,15 @@ import os
 import sys
 import io
 import json
-from flask import Flask, request, jsonify
+import shutil
+import re
+from datetime import datetime
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import torch
 import torch.nn.functional as F
-from PIL import Image
+from PIL import Image, ImageStat
+import piexif
 
 # --- CONFIGURATION CHEMINS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,8 +19,12 @@ sys.path.append(BASE_DIR)
 # Import des fonctions d'entraînement pour récupérer la classe du modèle
 from pipeline.train_grl import WaterPollutionGRL, get_transforms
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
+
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
 
 # Modèle demandé par l'utilisateur : no mask, no grl, no siamois, train all
 MODEL_PATH = os.path.join(BASE_DIR, "models", "grl", "no_mask", "no_grl", "train_all", "best_grl_model.pth")
@@ -42,68 +50,149 @@ except Exception as e:
 # Transform "no_mask" classique : RGB (ImageNet normalization)
 _, val_transform = get_transforms(scope="no_mask")
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    if global_model is None:
-        return jsonify({"error": "Le modèle PyTorch n'a pas pu être chargé côté serveur."}), 500
+@app.route('/image/<path:filepath>')
+def serve_image(filepath):
+    if not filepath.startswith('/'):
+        filepath = '/' + filepath
+    return send_file(filepath)
 
-    if 'images' not in request.files:
-        return jsonify({"error": "Aucune image envoyée"}), 400
+@app.route('/import_and_predict', methods=['POST'])
+def import_and_predict():
+    data = request.json
+    source_dir = data.get('source_dir')
+    workspace_dir = data.get('workspace_dir')
+    river = data.get('river', "Unknown").strip().capitalize()
+    pov = data.get('pov', "1").strip()
+    
+    if not all([source_dir, workspace_dir]):
+        return jsonify({"error": "Dossiers source ou workspace manquants."}), 400
         
-    files = request.files.getlist('images')
+    if not os.path.isdir(source_dir):
+        return jsonify({"error": "Dossier source invalide."}), 400
+        
+    valid_exts = {'.jpg', '.png', '.jpeg'}
+    files = []
+    for f in os.listdir(source_dir):
+        if os.path.splitext(f)[-1].lower() in valid_exts:
+            files.append(os.path.join(source_dir, f))
+            
+    if not files:
+        return jsonify({"error": "Aucune image trouvée dans le dossier source."}), 400
+        
+    # Tri temporel pour première et dernière date
+    files.sort(key=lambda x: os.path.getmtime(x))
+    start_date_str = datetime.fromtimestamp(os.path.getmtime(files[0])).strftime("%Y%m%d")
+    end_date_str = datetime.fromtimestamp(os.path.getmtime(files[-1])).strftime("%Y%m%d")
+    
+    folder_name = f"{start_date_str}_to_{end_date_str}" if start_date_str != end_date_str else start_date_str
+    dest_dir = os.path.join(workspace_dir, river, str(pov), folder_name)
+    os.makedirs(dest_dir, exist_ok=True)
+    
     results = []
     
-    # Mode Batch pour que ce soit rapide, mais on le fait image par image par sécurité pour ce proto
-    for file in files:
-        if file.filename == '':
-            continue
+    for f in files:
+        base_name = os.path.basename(f)
+        last_dot = base_name.rfind('.')
+        original_sans_ext = base_name[:last_dot] if last_dot != -1 else base_name
+        ext = base_name[last_dot:] if last_dot != -1 else '.jpg'
+        
+        if re.match(r"^\d{8}_\d{6}_", base_name):
+            new_name = base_name
+        else:
+            mod_time = datetime.fromtimestamp(os.path.getmtime(f))
+            prefix = mod_time.strftime("%d%m%Y_%H%M%S")
+            new_name = f"{prefix}_{original_sans_ext}_{river}{ext}"
+            
+        dest_path = os.path.join(dest_dir, new_name)
+        if not os.path.exists(dest_path):
+            shutil.copy2(f, dest_path)
             
         try:
-            image_bytes = file.read()
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            # Toujours utiliser l'image copiée
+            img = Image.open(dest_path).convert("RGB")
             
-            # --- FILTRAGE DE NUIT (Faible Luminosité) ---
-            from PIL import ImageStat
             gray = img.convert("L")
             avg_brightness = ImageStat.Stat(gray).mean[0]
             
-            if avg_brightness < 40: # Seuil Nuit
+            if avg_brightness < 40:
                 results.append({
-                    "name": file.filename,
+                    "name": new_name,
+                    "path": dest_path,
                     "score": -1,
                     "label": -1,
                     "status": "night"
                 })
                 continue
-            
-            # Preprocessing
+                
             input_tensor = val_transform(img).unsqueeze(0).to(device)
-            
-            # Inference
             with torch.no_grad():
                 outputs = global_model(input_tensor)
                 probs = F.softmax(outputs, dim=1)
                 
-                # prob[0][0] = propre, prob[0][1] = pollué
                 score_polluted = probs[0][1].item()
                 predicted_label = 1 if score_polluted >= 0.5 else 0
                 
+            match = re.match(r"^(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})", new_name)
+            date_fmt = f"{match.group(1)}/{match.group(2)}/{match.group(3)}" if match else "N/A"
+            time_fmt = f"{match.group(4)}:{match.group(5)}:{match.group(6)}" if match else "N/A"
+
             results.append({
-                "name": file.filename,
+                "name": new_name,
+                "path": dest_path,
+                "date": date_fmt,
+                "time": time_fmt,
                 "score": score_polluted,
                 "label": predicted_label,
                 "status": "ok"
             })
         except Exception as e:
-            print(f"Erreur locale avec {file.filename}: {e}")
-            results.append({
-                "name": file.filename,
-                "score": 0.0,
-                "label": 0,
-                "error": str(e)
-            })
+            print(f"Erreur d'inférence avec {new_name}: {e}")
             
-    return jsonify({"predictions": results})
+    return jsonify({"predictions": results, "dest_dir": dest_dir})
+
+@app.route('/save', methods=['POST'])
+def save_labels():
+    data = request.json
+    labels = data.get('labels', [])
+    dest_dir = data.get('dest_dir')
+    
+    if not labels or not dest_dir:
+        return jsonify({"error": "Données incomplètes."}), 400
+        
+    csv_path = os.path.join(dest_dir, "labels.csv")
+    
+    try:
+        import csv
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Date", "Heure", "Nom_Image", "Confidence_Modele", "Label_Utilisateur"])
+            
+            for item in labels:
+                writer.writerow([
+                    item.get('date', ''), 
+                    item.get('time', ''), 
+                    item.get('name', ''), 
+                    item.get('score', 0), 
+                    item.get('label', 0)
+                ])
+                
+                # --- EXIF TAGGING ---
+                if item.get('status') != 'night':
+                    img_path = item.get('path')
+                    if os.path.exists(img_path) and img_path.lower().endswith(('.jpg', '.jpeg')):
+                        try:
+                            # Utilisation de piexif pour injecter les metadatas
+                            exif_dict = piexif.load(img_path)
+                            tag_text = "STATUS: POLLUE" if item.get('label') == 1 else "STATUS: PROPRE"
+                            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = tag_text.encode('utf-8')
+                            exif_bytes = piexif.dump(exif_dict)
+                            piexif.insert(exif_bytes, img_path)
+                        except Exception as e:
+                            print(f"Erreur EXIF sur {img_path}: {e}")
+
+        return jsonify({"success": True, "csv_path": csv_path})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     print("🚀 Démarrage du serveur Flask sur http://127.0.0.1:5000")

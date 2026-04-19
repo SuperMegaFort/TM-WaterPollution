@@ -1,5 +1,5 @@
 // DOM Elements
-const importInput = document.getElementById('import-input');
+const importBtn = document.getElementById('import-btn');
 const exportBtn = document.getElementById('export-btn');
 const emptyState = document.getElementById('empty-state');
 const mainInterface = document.getElementById('main-interface');
@@ -41,68 +41,38 @@ const COLOR_CLEAN = '#06b6d4';     // Cyan
 const COLOR_POLLUTED = '#f97316';  // Orange
 
 // --- INITIALISATION ---
-importInput.addEventListener('change', handleImport);
+importBtn.addEventListener('click', handleImportNative);
 exportBtn.addEventListener('click', handleExport);
 
-// --- UTILITAIRE DATE/HEURE ---
-function extractDateTime(filename) {
-    const match = filename.match(/^(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})/);
-    if (match) {
-        return {
-            date: `${match[1]}/${match[2]}/${match[3]}`,
-            time: `${match[4]}:${match[5]}:${match[6]}`
-        };
+// --- IMPORTATION NATIVE ---
+async function handleImportNative(event) {
+    if (!window.pywebview || !window.pywebview.api) {
+        alert("Mode natif non détecté. L'application doit être lancée dans le wrapper PyWebView.");
+        return;
     }
-    return { date: 'N/A', time: 'N/A' };
-}
-
-// --- IMPORTATION ---
-async function handleImport(event) {
-    let rawFiles = Array.from(event.target.files).filter(file => file.type.startsWith('image/'));
-    if (rawFiles.length === 0) return;
-
-    // --- INTERCEPTION : Renommage automatique SD ---
-    let files = [];
-    const needsRename = rawFiles.some(file => !/^\d{8}_\d{6}_/.test(file.name));
     
-    if (needsRename) {
-        const riverName = prompt("De quelle rivière proviennent ces images ? (ex: Avril, Ziplo, Aire, etc.)");
-        if (!riverName || riverName.trim() === "") {
-            event.target.value = ''; // Reset input
-            return;
-        }
-
-        const cleanRiverName = riverName.trim().charAt(0).toUpperCase() + riverName.trim().slice(1).toLowerCase();
-
-        files = rawFiles.map(file => {
-            if (/^\d{8}_\d{6}_/.test(file.name)) {
-                return file; // Déjà formaté correctement
-            }
-
-            // Extraction Date & Heure depuis la carte SD
-            const d = new Date(file.lastModified || Date.now());
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const year = d.getFullYear();
-            const hours = String(d.getHours()).padStart(2, '0');
-            const mins = String(d.getMinutes()).padStart(2, '0');
-            const secs = String(d.getSeconds()).padStart(2, '0');
-
-            const lastDot = file.name.lastIndexOf('.');
-            const originalNameSansExt = lastDot !== -1 ? file.name.substring(0, lastDot) : file.name;
-            const extension = lastDot !== -1 ? file.name.substring(lastDot) : '.jpg';
-
-            // Formatage: DDMMYYYY_HHMMSS_ORIGINALNAME_RiverName.jpg
-            const newName = `${day}${month}${year}_${hours}${mins}${secs}_${originalNameSansExt}_${cleanRiverName}${extension}`;
-            return new File([file], newName, { type: file.type, lastModified: file.lastModified });
-        });
-    } else {
-        files = rawFiles;
+    // 1. Get Workspace Directory
+    let workspaceDir = localStorage.getItem('waterwatcher_workspace');
+    if (!workspaceDir) {
+        alert("Configuration Initiale :\n\nVeuillez sélectionner le DOSSIER (Workspace) où seront enregistrées toutes vos images triées par la suite.");
+        workspaceDir = await window.pywebview.api.open_folder_dialog("Sélectionnez le Workspace Global");
+        if (!workspaceDir) return;
+        localStorage.setItem('waterwatcher_workspace', workspaceDir);
     }
-
-    files.sort((a, b) => a.name.localeCompare(b.name));
     
-    // Afficher l'écran de chargement
+    // 2. Get Source Directory
+    alert("Veuillez maintenant sélectionner le DOSSIER SOURCE contenant les images brutes à analyser (ex: Répertoire Carte SD).");
+    let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionner la source des images");
+    if (!sourceDir) return;
+    
+    // 3. User Prompts
+    let riverName = prompt("Nom de la Rivière (ex: Avril, Ziplo, Aire...) :");
+    if (!riverName || riverName.trim() === "") return;
+    
+    let pov = prompt("Numéro de Point de Vue (ex: 1, 2, 3...) :");
+    if (!pov || pov.trim() === "") return;
+    
+    // Affichage interface chargement
     emptyState.style.display = 'none';
     mainInterface.style.display = 'flex';
     exportBtn.disabled = true;
@@ -111,73 +81,69 @@ async function handleImport(event) {
     const loadingCount = document.getElementById('loading-count');
     if(loadingScreen && loadingCount) {
         loadingScreen.style.display = 'flex';
-        loadingCount.textContent = files.length;
+        loadingCount.textContent = "... Copie & IA en cours ...";
     }
-
-    // Préparer les images pour le Backend Python (API)
-    const formData = new FormData();
-    files.forEach(file => formData.append('images', file));
 
     let predictions = [];
     try {
-        const response = await fetch('http://127.0.0.1:5000/predict', {
+        const response = await fetch('http://127.0.0.1:5000/import_and_predict', {
             method: 'POST',
-            body: formData
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                source_dir: sourceDir,
+                workspace_dir: workspaceDir,
+                river: riverName,
+                pov: pov
+            })
         });
         
-        if (!response.ok) throw new Error("Erreur serveur API");
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || "Erreur serveur API");
+        }
         const data = await response.json();
         predictions = data.predictions;
+        window.currentDestDir = data.dest_dir; // Utilisé lors du Save EXIF
     } catch (e) {
         console.error("Erreur Backend :", e);
-        alert("⚠️ Modèle IA injoignable (Avez-vous bien lancé `python UI/server.py` dans le terminal ?).\n\nGénération de valeurs aléatoires pour la démonstration.");
-        // Fallback aléatoire en cas d'erreur
-        predictions = files.map((f, i) => {
-            const isPolluted = i > 15 && i < 30;
-            return {
-                name: f.name,
-                score: isPolluted ? 0.7 + Math.random() * 0.2 : Math.random() * 0.2,
-                label: isPolluted ? 1 : 0
-            };
-        });
+        alert("L'importation ou l'analyse des images a échoué.\nMessage d'erreur: " + e.message);
+        if(loadingScreen) loadingScreen.style.display = 'none';
+        emptyState.style.display = 'flex';
+        mainInterface.style.display = 'none';
+        return;
     }
 
-    // Filtrer les images de nuit avant de les mettre dans le DOM
-    let validFiles = [];
-    let validPredictions = [];
+    // Filtrer les nuits et convertir pour le graphique
+    let validPredictions = predictions.filter(p => p.status !== "night");
+    const total = validPredictions.length;
     
-    files.forEach(file => {
-        const pred = predictions.find(p => p.name === file.name);
-        if (pred && pred.status !== "night") {
-            validFiles.push(file);
-            validPredictions.push(pred);
-        }
-    });
-
-    const total = validFiles.length;
-    dataPoints = validFiles.map((file, i) => {
-        const pred = validPredictions.find(p => p.name === file.name);
-        const dt = extractDateTime(file.name);
+    dataPoints = validPredictions.map((pred, i) => {
+        let cleanPath = pred.path.startsWith('/') ? pred.path.substring(1) : pred.path;
         return {
             id: i,
-            name: file.name,
-            date: dt.date,
-            time: dt.time,
-            url: URL.createObjectURL(file), 
-            originalScore: pred ? pred.score : 0.0,
-            label: pred ? pred.label : 0
+            name: pred.name,
+            date: pred.date,
+            time: pred.time,
+            url: `http://127.0.0.1:5000/image/${cleanPath}`,
+            path: pred.path,
+            originalScore: pred.score,
+            label: pred.label,
+            status: pred.status
         };
     });
 
-    // Masquer le chargement et afficher le tableau
     if(loadingScreen) loadingScreen.style.display = 'none';
     exportBtn.disabled = false;
     miniTimelineContainer.style.display = 'block';
 
-    initSliders(total);
-    renderMiniTimeline();
-    initScrubber();
-    renderChart();
+    if (total > 0) {
+        initSliders(total);
+        renderMiniTimeline();
+        initScrubber();
+        renderChart();
+    } else {
+        alert("Aucune image valide trouvée (ex: que des images de nuit).");
+    }
 }
 
 // --- MINI TIMELINE (Heatmap Scrubber) ---
@@ -622,24 +588,48 @@ function toggleLabel(index) {
     renderGrid(currentSelection.start, currentSelection.end);
 }
 
-// --- EXPORTATION ---
-function handleExport() {
-    if (dataPoints.length === 0) return;
+// --- SAUVEGARDE NATIVE ---
+async function handleExport() {
+    if (dataPoints.length === 0 || !window.currentDestDir) return;
 
-    let csvContent = "Date,Heure,Nom_Image,Confidence_Modele,Label_Utilisateur\n";
-    
-    dataPoints.forEach(row => {
-        csvContent += `${row.date},${row.time},${row.name},${row.originalScore.toFixed(4)},${row.label}\n`;
-    });
+    // Loading UX
+    const exportBtnInstance = document.getElementById('export-btn');
+    const originalText = exportBtnInstance.innerHTML;
+    exportBtnInstance.innerHTML = "Écriture EXIF en cours...";
+    exportBtnInstance.disabled = true;
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "waterwatcher_labels.csv");
-    document.body.appendChild(link);
-    
-    link.click();
-    document.body.removeChild(link);
+    try {
+        const payload = {
+            dest_dir: window.currentDestDir,
+            labels: dataPoints.map(dp => ({
+                name: dp.name,
+                path: dp.path,
+                date: dp.date,
+                time: dp.time,
+                score: dp.originalScore,
+                label: dp.label,
+                status: dp.status
+            }))
+        };
+        
+        const response = await fetch('http://127.0.0.1:5000/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) throw new Error("Erreur de sauvegarde");
+        
+        exportBtnInstance.innerHTML = "✔️ Labels & CSV Enregistrés!";
+        setTimeout(() => {
+            exportBtnInstance.innerHTML = originalText;
+            exportBtnInstance.disabled = false;
+        }, 4000);
+        
+    } catch(e) {
+        console.error(e);
+        alert("Erreur lors de la sauvegarde: " + e.message);
+        exportBtnInstance.innerHTML = originalText;
+        exportBtnInstance.disabled = false;
+    }
 }
