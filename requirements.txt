@@ -120,12 +120,6 @@ pydeck==0.9.1
 Pygments==2.19.2
 pyinstaller==6.19.0
 pyinstaller-hooks-contrib==2026.4
-pyobjc-core==12.1
-pyobjc-framework-Cocoa==12.1
-pyobjc-framework-Quartz==12.1
-pyobjc-framework-Security==12.1
-pyobjc-framework-UniformTypeIdentifiers==12.1
-pyobjc-framework-WebKit==12.1
 pyOpenSSL==23.2.0
 pyparsing==3.2.5
 PySide6==6.11.0

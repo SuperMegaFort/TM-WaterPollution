@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WaterWatcher - Console Technique</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style_2.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+
+        <header class="tech-header">
+            <div class="header-top">
+                <div class="logo-area">
+                    <div class="status-dot online"></div>
+                    <h1>WaterPollution <span class="version-tag">v3.0</span></h1>
+                </div>
+                <div class="actions">
+                    <button id="btn-config-workspace" class="tech-btn outline">[path] CONFIG WORKSPACE</button>
+                    <button id="btn-load-existing" class="tech-btn outline">[folder] OUVRIR EXISTANT</button>
+                    <button id="import-btn" class="tech-btn primary">[+] NOUVEL IMPORT IA</button>
+                    <button id="export-btn" class="tech-btn success" disabled>[⬇] SAUVEGARDER</button>
+                </div>
+            </div>
+
+            <div class="header-bottom">
+                <div class="path-group">
+                    <span class="path-label">WORKSPACE :</span>
+                    <input type="text" id="workspace-display" class="path-input" readonly
+                        placeholder="Aucun workspace défini...">
+                </div>
+                <div class="path-divider">|</div>
+                <div class="path-group">
+                    <span class="path-label">DOSSIER ACTUEL :</span>
+                    <input type="text" id="current-folder-display" class="path-input" readonly
+                        placeholder="En attente...">
+                </div>
+            </div>
+        </header>
+
+        <main class="content-grid">
+            <div class="empty-state" id="empty-state">
+                <div class="console-text">
+                    > EN ATTENTE DE DONNÉES...<br>
+                    > VEUILLEZ CONNECTER UNE SOURCE OU OUVRIR UN DOSSIER EXISTANT.
+                </div>
+            </div>
+
+            <div id="main-interface" style="display:none; flex-direction: column; gap: 16px;">
+
+                <div id="loading-screen" class="loading-overlay" style="display:none;">
+                    <div class="loader-box">
+                        <div class="spinner-tech"></div>
+                        <h2>PROCESSUS EN COURS</h2>
+                        <p>> Modèle : PyTorch EfficientNet_V2</p>
+                        <p>> Fichiers traités : <span id="loading-count" class="highlight-text">0</span></p>
+                    </div>
+                </div>
+
+                <section class="tech-panel">
+                    <div class="panel-header">
+                        <div class="header-left">
+                            <h2>ANALYSE DE CONFIANCE (ROC-AUC)</h2>
+                            <div class="legend">
+                                <span class="legend-item polluted">■ DÉTECTION</span>
+                                <span class="legend-item text">SÉLECTION INTERACTIVE ACTIVÉE</span>
+                            </div>
+                        </div>
+                        <div class="threshold-control">
+                            <span class="tech-label">SEUIL IA : <span id="threshold-val">0.50</span></span>
+                            <input type="range" id="threshold-slider" min="0.01" max="0.99" step="0.01" value="0.50">
+                        </div>
+                    </div>
+
+                    <div class="chart-wrapper">
+                        <canvas id="pollutionChart"></canvas>
+                    </div>
+
+                    <div id="mini-timeline-container" class="timeline-container" style="display:none;">
+                        <div class="range-slider-wrapper" id="range-wrapper" style="display:none;">
+                            <div class="slider-track" id="slider-track"></div>
+                            <input type="range" id="slider-min" class="range-input" min="0" max="100" value="0"
+                                step="1">
+                            <input type="range" id="slider-max" class="range-input" min="0" max="100" value="100"
+                                step="1">
+                        </div>
+
+                        <div class="scrubber-wrapper" id="scrubber-wrapper">
+                            <div class="mini-timeline-track" id="mini-track"></div>
+                            <div class="timeline-axis" id="timeline-axis"></div>
+                            <div id="scrub-preview" class="scrub-preview">
+                                <img id="preview-img" src="" alt="Aperçu">
+                                <div id="preview-info" class="preview-info">Nom_Image.jpg</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="tech-panel" id="zone-section" style="display:none;">
+                    <div class="panel-header">
+                        <h2>INSPECTION MANUELLE : <span id="zone-title" class="highlight-cyan"></span></h2>
+                        <span class="hint-text">OVERRIDE MANUEL AUTORISÉ (CLIC GAUCHE)</span>
+                    </div>
+
+                    <div class="image-grid" id="image-grid"></div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <div id="image-modal" class="tech-modal" style="display: none;">
+        <div class="modal-header">
+            <span>VISIONNEUSE HD</span>
+            <span class="close-modal" id="close-modal">[ X ]</span>
+        </div>
+        <img class="modal-content" id="modal-img">
+    </div>
+
+    <script src="app_2.js"></script>
+</body>
+
+</html>

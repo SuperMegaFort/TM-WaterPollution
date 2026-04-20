@@ -16,46 +16,86 @@ import piexif
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 
-# Import des fonctions d'entraînement pour récupérer la classe du modèle
-from pipeline.train_grl import WaterPollutionGRL, get_transforms
+try:
+    from pipeline.train_grl import WaterPollutionGRL, get_transforms
+except ImportError:
+    print("❌ Erreur : Impossible de trouver pipeline/train_grl.py")
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
+# 🟢 POINTE VERS LA NOUVELLE INTERFACE
 @app.route('/')
 def index():
     return app.send_static_file('index_2.html')
 
-# Modèle demandé par l'utilisateur : no mask, no grl, no siamois, train all
+# --- CHARGEMENT DU MODÈLE IA ---
+# ⚠️ MODIFIE CETTE LIGNE AVEC LE CHEMIN EXACT DE TON FICHIER .pth SI BESOIN
 MODEL_PATH = os.path.join(BASE_DIR, "models", "grl", "no_mask", "no_grl", "train_all", "best_grl_model.pth")
 device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
 print(f"Chargement du modèle : {MODEL_PATH} sur {device}...")
 
 global_model = None
+val_transform = None
 
 try:
     if os.path.exists(MODEL_PATH):
-        # Instanciation (sans GRL, backbone = efficientnet_v2_m)
         global_model = WaterPollutionGRL(num_domains=1, num_classes=2, backbone='efficientnet_v2_m', use_grl=False)
         global_model.load_state_dict(torch.load(MODEL_PATH, map_location=device, weights_only=True))
         global_model.to(device)
         global_model.eval()
+        _, val_transform = get_transforms(scope="no_mask")
         print("✅ Modèle IA Prêt pour l'inférence.")
     else:
-        print("❌ Erreur : Fichier modèle introuvable :", MODEL_PATH)
+        print(f"❌ Erreur : Fichier modèle introuvable à {MODEL_PATH}")
 except Exception as e:
     print(f"❌ Erreur lors du chargement : {e}")
 
-# Transform "no_mask" classique : RGB (ImageNet normalization)
-_, val_transform = get_transforms(scope="no_mask")
 
+# --- ROUTE 1 : SERVEUR D'IMAGES ---
 @app.route('/image/<path:filepath>')
 def serve_image(filepath):
     if not filepath.startswith('/'):
         filepath = '/' + filepath
     return send_file(filepath)
 
+
+# --- ROUTE 2 : OUVRIR UN DOSSIER EXISTANT (SANS IA) ---
+@app.route('/load_existing', methods=['POST'])
+def load_existing():
+    data = request.json
+    folder_path = data.get('folder_path')
+    
+    if not folder_path or not os.path.isdir(folder_path):
+        return jsonify({"error": "Dossier invalide."}), 400
+        
+    csv_path = os.path.join(folder_path, "labels.csv")
+    results = []
+    
+    if os.path.exists(csv_path):
+        import csv
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                img_path = os.path.join(folder_path, row.get('Nom_Image', ''))
+                if os.path.exists(img_path):
+                    results.append({
+                        "name": row.get('Nom_Image'),
+                        "path": img_path,
+                        "date": row.get('Date', 'N/A'),
+                        "time": row.get('Heure', 'N/A'),
+                        "score": float(row.get('Confidence_Modele', 0.0)),
+                        "label": int(row.get('Label_Utilisateur', 0)),
+                        "status": "ok"
+                    })
+    else:
+        return jsonify({"error": "Aucun fichier labels.csv trouvé dans ce dossier. Lancez d'abord un Nouvel Import IA."}), 400
+        
+    return jsonify({"predictions": results, "dest_dir": folder_path})
+
+
+# --- ROUTE 3 : NOUVEL IMPORT AVEC IA ---
 @app.route('/import_and_predict', methods=['POST'])
 def import_and_predict():
     data = request.json
@@ -79,7 +119,6 @@ def import_and_predict():
     if not files:
         return jsonify({"error": "Aucune image trouvée dans le dossier source."}), 400
         
-    # Tri temporel pour première et dernière date
     files.sort(key=lambda x: os.path.getmtime(x))
     start_date_str = datetime.fromtimestamp(os.path.getmtime(files[0])).strftime("%Y%m%d")
     end_date_str = datetime.fromtimestamp(os.path.getmtime(files[-1])).strftime("%Y%m%d")
@@ -108,27 +147,20 @@ def import_and_predict():
             shutil.copy2(f, dest_path)
             
         try:
-            # Toujours utiliser l'image copiée
             img = Image.open(dest_path).convert("RGB")
-            
             gray = img.convert("L")
             avg_brightness = ImageStat.Stat(gray).mean[0]
             
             if avg_brightness < 40:
-                results.append({
-                    "name": new_name,
-                    "path": dest_path,
-                    "score": -1,
-                    "label": -1,
-                    "status": "night"
-                })
-                continue
+                # 🟢 NOUVEAU : On supprime physiquement le fichier s'il est trop sombre
+                os.remove(dest_path) 
+                print(f"🗑️ Image de nuit supprimée : {new_name}")
+                continue # On passe à la suivante sans l'ajouter aux résultats
                 
             input_tensor = val_transform(img).unsqueeze(0).to(device)
             with torch.no_grad():
                 outputs = global_model(input_tensor)
                 probs = F.softmax(outputs, dim=1)
-                
                 score_polluted = probs[0][1].item()
                 predicted_label = 1 if score_polluted >= 0.5 else 0
                 
@@ -137,19 +169,16 @@ def import_and_predict():
             time_fmt = f"{match.group(4)}:{match.group(5)}:{match.group(6)}" if match else "N/A"
 
             results.append({
-                "name": new_name,
-                "path": dest_path,
-                "date": date_fmt,
-                "time": time_fmt,
-                "score": score_polluted,
-                "label": predicted_label,
-                "status": "ok"
+                "name": new_name, "path": dest_path, "date": date_fmt, "time": time_fmt,
+                "score": score_polluted, "label": predicted_label, "status": "ok"
             })
         except Exception as e:
             print(f"Erreur d'inférence avec {new_name}: {e}")
             
     return jsonify({"predictions": results, "dest_dir": dest_dir})
 
+
+# --- ROUTE 4 : SAUVEGARDE & ÉCRITURE EXIF ---
 @app.route('/save', methods=['POST'])
 def save_labels():
     data = request.json
@@ -169,46 +198,32 @@ def save_labels():
             
             for item in labels:
                 writer.writerow([
-                    item.get('date', ''), 
-                    item.get('time', ''), 
-                    item.get('name', ''), 
-                    item.get('score', 0), 
-                    item.get('label', 0)
+                    item.get('date', ''), item.get('time', ''), item.get('name', ''), 
+                    item.get('score', 0), item.get('label', 0)
                 ])
                 
-                # --- EXIF TAGGING (Ultra-Robuste) ---
+                # --- EXIF TAGGING ULTRA-ROBUSTE ---
                 if item.get('status') != 'night':
                     img_path = item.get('path')
                     if os.path.exists(img_path) and img_path.lower().endswith(('.jpg', '.jpeg')):
                         try:
-                            # 1. Chargement sécurisé (crée un dico vide si pas d'EXIF)
                             try:
                                 exif_dict = piexif.load(img_path)
                             except Exception:
                                 exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
                             
-                            # 2. Nettoyage des MakerNotes (souvent corrompus par les appareils photo, fait planter la sauvegarde)
                             if piexif.ExifIFD.MakerNote in exif_dict.get("Exif", {}):
                                 del exif_dict["Exif"][piexif.ExifIFD.MakerNote]
 
-                            # Définition du label
                             tag_text = "POLLUE" if item.get('label') == 1 else "PROPRE"
-                            
-                            # 3. Ajout dans la Description (Visible nativement sur Mac et Windows)
-                            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = f"{tag_text}".encode('utf-8')
-                            
-                            # 4. Ajout dans Software (Pour identifier l'IA)
+                            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = f"Status: {tag_text}".encode('utf-8')
                             exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
                             
-                            # 5. Ajout dans UserComment (Standard EXIF universel)
-                            user_comment = b"ASCII\x00\x00\x00" + f"{tag_text}".encode('ascii')
+                            user_comment = b"ASCII\x00\x00\x00" + f"Water Pollution: {tag_text}".encode('ascii')
                             exif_dict["Exif"][piexif.ExifIFD.UserComment] = user_comment
                             
-                            # 6. Sauvegarde forcée
                             exif_bytes = piexif.dump(exif_dict)
                             piexif.insert(exif_bytes, img_path)
-                            print(f"[EXIF] Tag {tag_text} ajouté avec succès sur {item.get('name')}")
-                            
                         except Exception as e:
                             print(f"[ERREUR EXIF] Impossible de tagger {item.get('name')}: {e}")
 
@@ -216,6 +231,7 @@ def save_labels():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 if __name__ == '__main__':
-    print("🚀 Démarrage du serveur Flask sur http://127.0.0.1:5000")
+    print(" Démarrage du serveur Flask sur http://127.0.0.1:5000")
     app.run(host='127.0.0.1', port=5000, debug=False)

@@ -1,4 +1,4 @@
-// DOM Elements
+// --- DOM Elements ---
 const importBtn = document.getElementById('import-btn');
 const exportBtn = document.getElementById('export-btn');
 const emptyState = document.getElementById('empty-state');
@@ -23,103 +23,236 @@ const modal = document.getElementById('image-modal');
 const modalImg = document.getElementById('modal-img');
 const closeModal = document.getElementById('close-modal');
 
+// Nouveaux éléments de la navigation (V2)
+const workspaceDisplay = document.getElementById('workspace-display');
+const currentFolderDisplay = document.getElementById('current-folder-display');
+const btnConfigWorkspace = document.getElementById('btn-config-workspace');
+const btnLoadExisting = document.getElementById('btn-load-existing');
+const thresholdSlider = document.getElementById('threshold-slider');
+const thresholdVal = document.getElementById('threshold-val');
+let currentThreshold = 0.50;
+
+// Gestion Modal
 closeModal.onclick = () => { modal.style.display = 'none'; };
-modal.onclick = (e) => { if(e.target === modal) modal.style.display = 'none'; };
+modal.onclick = (e) => { if (e.target === modal) modal.style.display = 'none'; };
 
 function showModal(url) {
     modalImg.src = url;
     modal.style.display = 'flex';
 }
 
-// State
+// --- STATE ---
 let dataPoints = [];
 let chartInstance = null;
 let currentSelection = { start: -1, end: -1 };
 
-// Palette (doit correspondre au CSS)
-// const COLOR_CLEAN = '#06b6d4';     // Cyan
-// const COLOR_POLLUTED = '#f97316';  // Orange
-
+// --- PALETTE TECHNIQUE (V2) ---
 const COLOR_CLEAN = '#00f0ff';     // Cyan technique
 const COLOR_POLLUTED = '#ff2a55';  // Rouge d'alerte technique
+const COLOR_POLLUTED_BG = 'rgba(255, 42, 85, 0.2)'; // Fond rouge semi-transparent
 
-// --- INITIALISATION ---
+// --- INITIALISATION WORKSPACE ---
+let currentWorkspace = localStorage.getItem('waterwatcher_workspace');
+if (currentWorkspace) {
+    workspaceDisplay.value = currentWorkspace;
+}
+
+// --- EVENT LISTENERS ---
+btnConfigWorkspace.addEventListener('click', async () => {
+    if (!window.pywebview || !window.pywebview.api) { alert("Mode natif requis."); return; }
+    let newWorkspace = await window.pywebview.api.open_folder_dialog("Sélectionnez le Workspace Global");
+    if (newWorkspace) {
+        localStorage.setItem('waterwatcher_workspace', newWorkspace);
+        workspaceDisplay.value = newWorkspace;
+        currentWorkspace = newWorkspace;
+    }
+});
+
+btnLoadExisting.addEventListener('click', handleLoadExisting);
 importBtn.addEventListener('click', handleImportNative);
 exportBtn.addEventListener('click', handleExport);
 
-// --- IMPORTATION NATIVE ---
-async function handleImportNative(event) {
+// --- 1. OUVRIR DOSSIER EXISTANT (SANS IA) ---
+async function handleLoadExisting() {
     if (!window.pywebview || !window.pywebview.api) {
-        alert("Mode natif non détecté. L'application doit être lancée dans le wrapper PyWebView.");
+        alert("Mode natif non détecté.");
         return;
     }
-    
-    // 1. Get Workspace Directory
-    let workspaceDir = localStorage.getItem('waterwatcher_workspace');
-    if (!workspaceDir) {
-        alert("Configuration Initiale :\n\nVeuillez sélectionner le DOSSIER (Workspace) où seront enregistrées toutes vos images triées par la suite.");
-        workspaceDir = await window.pywebview.api.open_folder_dialog("Sélectionnez le Workspace Global");
-        if (!workspaceDir) return;
-        localStorage.setItem('waterwatcher_workspace', workspaceDir);
+
+    if (!currentWorkspace) {
+        alert("Veuillez d'abord configurer un WORKSPACE DIR.");
+        return;
     }
-    
-    // 2. Get Source Directory
-    alert("Veuillez maintenant sélectionner le DOSSIER SOURCE contenant les images brutes à analyser (ex: Répertoire Carte SD).");
+
+    let targetFolder = await window.pywebview.api.open_folder_dialog("Sélectionnez un dossier déjà analysé");
+    if (!targetFolder) return;
+
+    currentFolderDisplay.value = targetFolder;
+
+    // UI Loading
+    emptyState.style.display = 'none';
+    mainInterface.style.display = 'flex';
+    exportBtn.disabled = true;
+
+    const loadingScreen = document.getElementById('loading-screen');
+    const loadingCount = document.getElementById('loading-count');
+    if (loadingScreen && loadingCount) {
+        loadingScreen.style.display = 'flex';
+        loadingCount.textContent = "... Lecture du fichier CSV existant ...";
+    }
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/load_existing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_path: targetFolder })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || "Erreur lors de la lecture.");
+        }
+
+        const data = await response.json();
+        window.currentDestDir = data.dest_dir; // Important pour la sauvegarde future
+
+        // Formater les données pour le graphique
+        dataPoints = data.predictions.map((pred, i) => {
+            let cleanPath = pred.path.startsWith('/') ? pred.path.substring(1) : pred.path;
+
+            // 🟢 NOUVEAU : Si le CSV indique un label différent du score à 0.5, on considère que c'est un override manuel.
+            let defaultLabel = pred.score >= currentThreshold ? 1 : 0;
+            let isOverridden = pred.label !== defaultLabel;
+
+            return {
+                id: i,
+                name: pred.name,
+                date: pred.date,
+                time: pred.time,
+                url: `http://127.0.0.1:5000/image/${cleanPath}`,
+                path: pred.path,
+                originalScore: pred.score,
+                label: pred.label, // Label actuel (venant du CSV ou de l'IA)
+                status: pred.status,
+                manualOverride: isOverridden // 🟢 Verrou pour ne pas écraser les choix de l'utilisateur
+            };
+        });
+
+        if (loadingScreen) loadingScreen.style.display = 'none';
+        exportBtn.disabled = false;
+        miniTimelineContainer.style.display = 'block';
+
+        if (dataPoints.length > 0) {
+            initSliders(dataPoints.length);
+            renderMiniTimeline();
+            initScrubber();
+            renderChart();
+        } else {
+            alert("Aucune image trouvée dans le CSV.");
+        }
+
+    } catch (e) {
+        alert("Erreur : " + e.message);
+        if (loadingScreen) loadingScreen.style.display = 'none';
+        emptyState.style.display = 'flex';
+        mainInterface.style.display = 'none';
+    }
+}
+
+// --- LOGIQUE DU SEUIL IA ---
+thresholdSlider.addEventListener('input', (e) => {
+    currentThreshold = parseFloat(e.target.value);
+    thresholdVal.textContent = currentThreshold.toFixed(2);
+
+    if (dataPoints.length > 0) {
+        // Mettre à jour les labels qui n'ont pas été forcés manuellement
+        dataPoints.forEach(dp => {
+            if (!dp.manualOverride) {
+                dp.label = dp.originalScore >= currentThreshold ? 1 : 0;
+            }
+        });
+
+        updateChartVisuals();
+        renderMiniTimeline(); // Met à jour la barre de couleurs
+
+        // Mettre à jour la grille si une zone est ouverte
+        if (currentSelection.start !== -1) {
+            renderGrid(currentSelection.start, currentSelection.end);
+        }
+    }
+});
+
+// --- 2. NOUVEL IMPORT (AVEC IA) ---
+async function handleImportNative(event) {
+    if (!window.pywebview || !window.pywebview.api) {
+        alert("Mode natif non détecté.");
+        return;
+    }
+
+    if (!currentWorkspace) {
+        alert("Configuration Initiale :\n\nVeuillez d'abord configurer le WORKSPACE DIR où seront enregistrées toutes vos images.");
+        return;
+    }
+
+    alert("Veuillez maintenant sélectionner le DOSSIER SOURCE contenant les images brutes à analyser (ex: Carte SD).");
     let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionner la source des images");
     if (!sourceDir) return;
-    
-    // 3. User Prompts
+
     let riverName = prompt("Nom de la Rivière (ex: Avril, Ziplo, Aire...) :");
     if (!riverName || riverName.trim() === "") return;
-    
+
     let pov = prompt("Numéro de Point de Vue (ex: 1, 2, 3...) :");
     if (!pov || pov.trim() === "") return;
-    
+
     // Affichage interface chargement
     emptyState.style.display = 'none';
     mainInterface.style.display = 'flex';
     exportBtn.disabled = true;
-    
+
     const loadingScreen = document.getElementById('loading-screen');
     const loadingCount = document.getElementById('loading-count');
-    if(loadingScreen && loadingCount) {
+    if (loadingScreen && loadingCount) {
         loadingScreen.style.display = 'flex';
-        loadingCount.textContent = "... Copie & IA en cours ...";
+        loadingCount.textContent = "... Copie & Inférence IA en cours ...";
     }
 
     let predictions = [];
     try {
         const response = await fetch('http://127.0.0.1:5000/import_and_predict', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 source_dir: sourceDir,
-                workspace_dir: workspaceDir,
+                workspace_dir: currentWorkspace,
                 river: riverName,
                 pov: pov
             })
         });
-        
+
         if (!response.ok) {
             const errData = await response.json();
             throw new Error(errData.error || "Erreur serveur API");
         }
         const data = await response.json();
         predictions = data.predictions;
-        window.currentDestDir = data.dest_dir; // Utilisé lors du Save EXIF
+        window.currentDestDir = data.dest_dir;
+
+        // Afficher le dossier actuel dans la nav
+        currentFolderDisplay.value = data.dest_dir;
+
     } catch (e) {
         console.error("Erreur Backend :", e);
         alert("L'importation ou l'analyse des images a échoué.\nMessage d'erreur: " + e.message);
-        if(loadingScreen) loadingScreen.style.display = 'none';
+        if (loadingScreen) loadingScreen.style.display = 'none';
         emptyState.style.display = 'flex';
         mainInterface.style.display = 'none';
         return;
     }
 
-    // Filtrer les nuits et convertir pour le graphique
+    // Filtrer les nuits et convertir
     let validPredictions = predictions.filter(p => p.status !== "night");
     const total = validPredictions.length;
-    
+
     dataPoints = validPredictions.map((pred, i) => {
         let cleanPath = pred.path.startsWith('/') ? pred.path.substring(1) : pred.path;
         return {
@@ -135,7 +268,7 @@ async function handleImportNative(event) {
         };
     });
 
-    if(loadingScreen) loadingScreen.style.display = 'none';
+    if (loadingScreen) loadingScreen.style.display = 'none';
     exportBtn.disabled = false;
     miniTimelineContainer.style.display = 'block';
 
@@ -163,41 +296,36 @@ function renderMiniTimeline() {
 function initScrubber() {
     scrubberWrapper.onmousemove = (e) => {
         if (dataPoints.length === 0) return;
-        
+
         const rect = scrubberWrapper.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const ratio = Math.max(0, Math.min(1, mouseX / rect.width));
         const index = Math.round(ratio * (dataPoints.length - 1));
-        
+
         const dp = dataPoints[index];
         if (!dp) return;
 
-        // Afficher l'aperçu
         scrubPreview.classList.add('active');
-        
-        // --- GESTION DES BORDS POUR L'APERÇU ---
-        const previewWidth = 500;
-        const previewHeight = 320;
+
+        const previewWidth = 400;
+        const previewHeight = 260;
         let leftPos = mouseX;
-        
-        // Empêcher de sortir à gauche/droite
+
         if (leftPos < previewWidth / 2) leftPos = previewWidth / 2;
         if (leftPos > rect.width - previewWidth / 2) leftPos = rect.width - previewWidth / 2;
         scrubPreview.style.left = `${leftPos}px`;
 
-        // Éviter le rognage en haut : si on est trop haut dans la page, on affiche en dessous
         if (rect.top < previewHeight + 40) {
             scrubPreview.style.bottom = 'auto';
-            scrubPreview.style.top = '70px'; // Un peu plus bas pour ne pas toucher la barre
+            scrubPreview.style.top = '50px';
         } else {
             scrubPreview.style.top = 'auto';
-            scrubPreview.style.bottom = '80px';
+            scrubPreview.style.bottom = '60px';
         }
 
         previewImg.src = dp.url;
-        previewInfo.innerHTML = `${index + 1} - ${dp.name}`;
+        previewInfo.innerHTML = `[${index + 1}/${dataPoints.length}] ${dp.name}`;
 
-        // Indicateur vertical (déplacement via ::before style)
         scrubberWrapper.style.setProperty('--cursor-x', `${mouseX}px`);
     };
 
@@ -224,9 +352,9 @@ function initSliders(total) {
     const updateFromSlider = (e) => {
         let minVal = parseInt(sliderMin.value);
         let maxVal = parseInt(sliderMax.value);
-        
+
         if (minVal > maxVal) {
-            if (e.target === sliderMin) {
+            if (e && e.target === sliderMin) {
                 sliderMin.value = maxVal;
                 minVal = maxVal;
             } else {
@@ -234,65 +362,53 @@ function initSliders(total) {
                 maxVal = minVal;
             }
         }
-        
+
         currentSelection = { start: minVal, end: maxVal };
         updateChartVisuals();
-        
+
         const count = maxVal - minVal + 1;
-        zoneTitle.textContent = `${count} image(s) sélectionnée(s) manuellement`;
-        zoneTitle.style.color = '#f8fafc';
+        zoneTitle.textContent = `[ ${count} IMG SÉLECTIONNÉES ]`;
+        zoneTitle.style.color = '#e4e4e7';
         zoneSection.style.display = 'flex';
         renderGrid(minVal, maxVal);
-        
-        // Mettre en couleur la zone sélectionnée sur la piste (track)
+
         const pctMin = (minVal / (total - 1)) * 100;
         const pctMax = (maxVal / (total - 1)) * 100;
-        document.getElementById('slider-track').style.background = `linear-gradient(to right, rgba(255,255,255,0.1) ${pctMin}%, var(--color-clean) ${pctMin}%, var(--color-clean) ${pctMax}%, rgba(255,255,255,0.1) ${pctMax}%)`;
+        document.getElementById('slider-track').style.background = `linear-gradient(to right, #27272a ${pctMin}%, var(--color-clean) ${pctMin}%, var(--color-clean) ${pctMax}%, #27272a ${pctMax}%)`;
     };
 
     sliderMin.oninput = updateFromSlider;
     sliderMax.oninput = updateFromSlider;
-    
-    // Initialisation de la couleur
-    updateFromSlider({target: null});
+    updateFromSlider(null);
 }
 
-// --- PLUGIN CHART.JS POUR ALIGNER LE SLIDER ET LA TIMELINE ---
+// --- PLUGINS CHART.JS ---
 const sliderAlignmentPlugin = {
     id: 'sliderAlignment',
     afterLayout: (chart) => {
         const rangeWrap = document.getElementById('range-wrapper');
         const miniWrap = document.getElementById('scrubber-wrapper');
         const containerWrap = document.getElementById('mini-timeline-container');
-        
         if (!rangeWrap || !miniWrap) return;
-        
         const { left, width } = chart.chartArea;
-        
-        // Aligner précisément sur la gauche de la zone de dessin Chart.js
         rangeWrap.style.marginLeft = `${left}px`;
         rangeWrap.style.width = `${width}px`;
-        
         miniWrap.style.marginLeft = `${left}px`;
         miniWrap.style.width = `${width}px`;
-        
         if (containerWrap) containerWrap.style.width = '100%';
     }
 };
 
-// --- PLUGIN CHART.JS POUR LE FOND (HIGHLIGHT) ---
 const highlightPlugin = {
     id: 'highlightPollution',
     beforeDraw: (chart) => {
         if (!dataPoints || dataPoints.length === 0) return;
         const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
-        
         ctx.save();
-        
-        // 1) Dessiner les zones de pollution (label == 1)
-        ctx.fillStyle = 'rgba(249, 115, 22, 0.2)'; // Orange
+
+        // Zones polluées
+        ctx.fillStyle = COLOR_POLLUTED_BG;
         let startX = null;
-        
         for (let i = 0; i < dataPoints.length; i++) {
             if (dataPoints[i].label === 1) {
                 if (startX === null) {
@@ -304,54 +420,46 @@ const highlightPlugin = {
                 }
             } else {
                 if (startX !== null) {
-                     const endX = Math.min(right, x.getPixelForValue(i) - (x.width / dataPoints.length) / 2);
-                     ctx.fillRect(startX, top, endX - startX, bottom - top);
-                     startX = null;
+                    const endX = Math.min(right, x.getPixelForValue(i) - (x.width / dataPoints.length) / 2);
+                    ctx.fillRect(startX, top, endX - startX, bottom - top);
+                    startX = null;
                 }
             }
         }
-        
-        // 2) Dessiner la zone actuellement SELECTIONNEE 
+
+        // Zone sélectionnée manuellement
         if (currentSelection.start !== -1 && currentSelection.end !== -1) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; // Surbrillance blanche claire
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
             const selStartX = Math.max(left, x.getPixelForValue(currentSelection.start) - (x.width / dataPoints.length) / 2);
             const selEndX = Math.min(right, x.getPixelForValue(currentSelection.end) + (x.width / dataPoints.length) / 2);
             ctx.fillRect(selStartX, top, selEndX - selStartX, bottom - top);
         }
-        
         ctx.restore();
     }
 };
 
-// --- PLUGIN CHART.JS POUR DELIMITER LES JOURS ---
 const daySeparatorPlugin = {
     id: 'daySeparator',
     beforeDraw: (chart) => {
         if (!dataPoints || dataPoints.length === 0) return;
         const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
-        
         ctx.save();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.strokeStyle = '#3f3f46';
         ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]);
+        ctx.setLineDash([4, 4]);
 
         let lastDate = null;
         for (let i = 0; i < dataPoints.length; i++) {
             const dp = dataPoints[i];
-            // Changement de date détecté
             if (lastDate !== null && dp.date !== lastDate) {
-                // On met le trait exactement au milieu entre la dernière image du jour et la première du jour suivant
                 const xPos = x.getPixelForValue(i) - (x.width / dataPoints.length) / 2;
-                
-                // Ligne pointillée
                 ctx.beginPath();
                 ctx.moveTo(xPos, top);
                 ctx.lineTo(xPos, bottom);
                 ctx.stroke();
 
-                // Texte de la nouvelle date
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                ctx.font = 'bold 11px Arial';
+                ctx.fillStyle = '#71717a';
+                ctx.font = '10px "JetBrains Mono", monospace';
                 ctx.fillText(dp.date, xPos + 6, top + 15);
             }
             lastDate = dp.date;
@@ -360,33 +468,30 @@ const daySeparatorPlugin = {
     }
 };
 
-// --- PLUGIN CHART.JS POUR L'AXE X DE LA TIMELINE ---
 const axisSyncPlugin = {
     id: 'axisSyncPlugin',
     afterDraw: (chart) => {
         if (!dataPoints || dataPoints.length === 0) return;
         const axisWrapper = document.getElementById('timeline-axis');
         if (!axisWrapper) return;
-        
         axisWrapper.innerHTML = '';
         const { scales: { x }, chartArea: { left: areaLeft } } = chart;
-        
+
         let lastDate = null;
         for (let i = 0; i < dataPoints.length; i++) {
             const dp = dataPoints[i];
             if (lastDate !== null && lastDate !== dp.date) {
-                // Position relative vu que #scrubber-wrapper a marginLeft = areaLeft
                 const xPos = x.getPixelForValue(i) - (x.width / dataPoints.length) / 2 - areaLeft;
-                
+
                 const tick = document.createElement('div');
                 tick.className = 'axis-tick';
                 tick.style.left = `${xPos}px`;
                 tick.innerText = dp.date;
-                
+
                 const line = document.createElement('div');
                 line.className = 'axis-line';
                 line.style.left = `${xPos}px`;
-                
+
                 axisWrapper.appendChild(tick);
                 axisWrapper.appendChild(line);
             }
@@ -397,57 +502,46 @@ const axisSyncPlugin = {
 
 Chart.register(highlightPlugin, sliderAlignmentPlugin, daySeparatorPlugin, axisSyncPlugin);
 
-// --- GRAPHIQUE (CHART.JS) ---
+// --- RENDER CHART ---
 function renderChart() {
     const ctx = document.getElementById('pollutionChart').getContext('2d');
-    
-    if (chartInstance) {
-        chartInstance.destroy();
-    }
+    if (chartInstance) chartInstance.destroy();
 
     chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: dataPoints.map(d => d.time === 'N/A' ? d.name : d.time),
             datasets: [{
-                label: "Confiance du Modèle (%)",
-                data: dataPoints.map(d => d.originalScore * 100), // En pourcentage
-                borderColor: COLOR_CLEAN, // La ligne est constante (score modèle)
+                label: "CONFIANCE IA (%)",
+                data: dataPoints.map(d => d.originalScore * 100),
+                borderColor: COLOR_CLEAN,
                 borderWidth: 2,
-                pointRadius: 0, // Pour une courbe propre
+                pointRadius: 0,
                 pointHoverRadius: 6,
-                tension: 0.3, // "Smoothness"
+                pointHoverBackgroundColor: COLOR_CLEAN,
+                tension: 0.2,
                 fill: false,
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            layout: {
-                padding: {
-                    left: 0,
-                    right: 0, // Suppression de la marge à droite
-                    top: 10,
-                    bottom: 0
-                }
-            },
-            interaction: {
-                mode: 'nearest',
-                axis: 'x',
-                intersect: false,
-            },
+            layout: { padding: { left: 0, right: 0, top: 10, bottom: 0 } },
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
             plugins: {
-                legend: {
-                    display: true,
-                    labels: { color: '#f8fafc' }
-                },
+                legend: { display: false },
                 tooltip: {
+                    backgroundColor: 'rgba(9, 9, 11, 0.9)',
+                    titleFont: { family: "'JetBrains Mono', monospace", size: 11 },
+                    bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+                    borderColor: '#27272a',
+                    borderWidth: 1,
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             const dp = dataPoints[context.dataIndex];
                             return [
-                                `Confiance: ${(dp.originalScore*100).toFixed(1)}%`,
-                                `Statut Actuel: ${dp.label === 1 ? "POLLUÉ 🟠" : "PROPRE 💧"}`
+                                `SCORE: ${(dp.originalScore * 100).toFixed(1)}%`,
+                                `STATE: ${dp.label === 1 ? "POLLUÉ [!]" : "PROPRE [OK]"}`
                             ];
                         }
                     }
@@ -456,16 +550,13 @@ function renderChart() {
             scales: {
                 x: {
                     display: true,
-                    title: { display: true, text: 'Heure', color: '#94a3b8' },
-                    ticks: { color: '#94a3b8', maxTicksLimit: 20 },
-                    grid: { color: 'rgba(255,255,255,0.05)' }
+                    ticks: { color: '#71717a', font: { family: "'JetBrains Mono', monospace", size: 10 }, maxTicksLimit: 20 },
+                    grid: { color: '#27272a' }
                 },
                 y: {
-                    min: 0,
-                    max: 105,
-                    title: { display: true, text: 'Confiance Modèle (%)', color: '#94a3b8' },
-                    ticks: { color: '#94a3b8' },
-                    grid: { color: 'rgba(255,255,255,0.05)' }
+                    min: 0, max: 105,
+                    ticks: { color: '#71717a', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+                    grid: { color: '#27272a' }
                 }
             },
             onClick: (event, elements, chart) => {
@@ -473,132 +564,108 @@ function renderChart() {
                 if (elements.length > 0) {
                     index = elements[0].index;
                 } else {
-                    // Si clic en dehors d'un point exact
                     const canvasPosition = Chart.helpers.getRelativePosition(event, chart);
                     const xValue = chart.scales.x.getValueForPixel(canvasPosition.x);
                     if (xValue !== undefined) index = Math.round(xValue);
                 }
-                
-                if (index >= 0 && index < dataPoints.length) {
-                    selectZone(index);
-                }
+                if (index >= 0 && index < dataPoints.length) selectZone(index);
             }
         }
     });
 }
 
 function updateChartVisuals() {
-    if (chartInstance) {
-        chartInstance.update();
-    }
+    if (chartInstance) chartInstance.update();
 }
 
-// --- LOGIQUE DE SÉLECTION DE ZONE ---
+// --- SÉLECTION & GRILLE ---
 function selectZone(index) {
     const targetLabel = dataPoints[index].label;
-    
-    // Trouver le bloc continu ayant le même label
+
     let start = index;
-    while (start > 0 && dataPoints[start - 1].label === targetLabel) {
-        start--;
-    }
-    
+    while (start > 0 && dataPoints[start - 1].label === targetLabel) start--;
+
     let end = index;
-    while (end < dataPoints.length - 1 && dataPoints[end + 1].label === targetLabel) {
-        end++;
-    }
-    
+    while (end < dataPoints.length - 1 && dataPoints[end + 1].label === targetLabel) end++;
+
     currentSelection = { start, end };
-    updateChartVisuals(); 
-    
+    updateChartVisuals();
+
     const count = end - start + 1;
-    zoneTitle.textContent = `${count} image(s) ${targetLabel === 1 ? '(Pollution)' : '(Propres)'}`;
+    zoneTitle.textContent = `[ ${count} IMG - ${targetLabel === 1 ? 'ALERTE' : 'NOMINAL'} ]`;
     zoneTitle.style.color = targetLabel === 1 ? COLOR_POLLUTED : COLOR_CLEAN;
 
     zoneSection.style.display = 'flex';
-    
-    // Sync slider thumbs
+
     if (rangeWrapper.style.display === 'flex' || rangeWrapper.style.display === '') {
         sliderMin.value = start;
         sliderMax.value = end;
-        
         const pctMin = (start / (dataPoints.length - 1)) * 100;
         const pctMax = (end / (dataPoints.length - 1)) * 100;
-        document.getElementById('slider-track').style.background = `linear-gradient(to right, rgba(255,255,255,0.1) ${pctMin}%, var(--color-clean) ${pctMin}%, var(--color-clean) ${pctMax}%, rgba(255,255,255,0.1) ${pctMax}%)`;
+        document.getElementById('slider-track').style.background = `linear-gradient(to right, #27272a ${pctMin}%, var(--color-clean) ${pctMin}%, var(--color-clean) ${pctMax}%, #27272a ${pctMax}%)`;
     }
 
     renderGrid(start, end);
-    // Petit scroll doux vers la section de la grille
     zoneSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// --- GRILLE D'IMAGES (LARGE) ---
 function renderGrid(start, end) {
     imageGrid.innerHTML = '';
-    
     for (let i = start; i <= end; i++) {
         const dp = dataPoints[i];
-        
+
         const card = document.createElement('div');
         card.className = `large-card ${dp.label === 1 ? 'polluted' : ''}`;
-        
-        // Label superposé
+
         const lbl = document.createElement('div');
         lbl.className = 'card-label';
-        lbl.innerHTML = dp.label === 1 ? '🟠 POLLUÉ' : '💧 PROPRE';
-        
+        lbl.innerHTML = dp.label === 1 ? '■ POLLUÉ' : '□ PROPRE';
+
         const img = document.createElement('img');
         img.src = dp.url;
         img.alt = dp.name;
         img.loading = "lazy";
 
-        // Bouton pour agrandir
         const expBtn = document.createElement('button');
         expBtn.className = 'expand-btn';
-        expBtn.innerHTML = '🔍';
+        expBtn.innerHTML = '[ ZOOM ]';
         expBtn.onclick = (e) => {
-            e.stopPropagation(); // Evite de déclencher toggleLabel
+            e.stopPropagation();
             showModal(dp.url);
         };
 
         card.appendChild(img);
         card.appendChild(lbl);
         card.appendChild(expBtn);
-        
-        card.addEventListener('click', () => {
-            toggleLabel(i);
-        });
 
+        card.addEventListener('click', () => { toggleLabel(i); });
         imageGrid.appendChild(card);
     }
 }
 
 function toggleLabel(index) {
     const dp = dataPoints[index];
-    dp.label = dp.label === 1 ? 0 : 1; 
-    
-    // Mettre à jour l'indicateur dans la mini-timeline (Scrubber)
+    dp.label = dp.label === 1 ? 0 : 1;
+
+    // 🟢 NOUVEAU : On marque l'image comme "forcée" par l'utilisateur
+    dp.manualOverride = true;
+
     const miniItem = document.getElementById(`mini-${index}`);
     if (miniItem) {
         if (dp.label === 1) miniItem.classList.add('polluted');
         else miniItem.classList.remove('polluted');
     }
 
-    // Mise à jour de la charte graphique en direct (changement du fond)
     updateChartVisuals();
-    
-    // Rafraîchir la grille (on conserve les bornes de la sélection, même si la zone continue est brisée)
     renderGrid(currentSelection.start, currentSelection.end);
 }
-
-// --- SAUVEGARDE NATIVE ---
+// --- SAUVEGARDE / EXPORT EXIF ---
 async function handleExport() {
     if (dataPoints.length === 0 || !window.currentDestDir) return;
 
-    // Loading UX
     const exportBtnInstance = document.getElementById('export-btn');
     const originalText = exportBtnInstance.innerHTML;
-    exportBtnInstance.innerHTML = "Écriture EXIF en cours...";
+    exportBtnInstance.innerHTML = "[!] ÉCRITURE EXIF...";
     exportBtnInstance.disabled = true;
 
     try {
@@ -614,22 +681,22 @@ async function handleExport() {
                 status: dp.status
             }))
         };
-        
+
         const response = await fetch('http://127.0.0.1:5000/save', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        
-        if (!response.ok) throw new Error("Erreur de sauvegarde");
-        
-        exportBtnInstance.innerHTML = "✔️ Labels & CSV Enregistrés!";
+
+        if (!response.ok) throw new Error("Erreur système de sauvegarde");
+
+        exportBtnInstance.innerHTML = "[OK] DONNÉES SAUVEGARDÉES";
         setTimeout(() => {
             exportBtnInstance.innerHTML = originalText;
             exportBtnInstance.disabled = false;
         }, 4000);
-        
-    } catch(e) {
+
+    } catch (e) {
         console.error(e);
         alert("Erreur lors de la sauvegarde: " + e.message);
         exportBtnInstance.innerHTML = originalText;

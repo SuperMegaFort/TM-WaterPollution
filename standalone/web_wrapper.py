@@ -6,14 +6,14 @@ import webview
 
 # Assurer que le dossier racine est dans le path pour trouver 'UI'
 sys.path.append(os.getcwd())
-from UI.server import app
-
+from UI.server_2 import app
+# 
 class Api:
     def open_folder_dialog(self, title):
         try:
             active_window = webview.windows[0]
             result = active_window.create_file_dialog(
-                webview.FOLDER_DIALOG, allow_multiple=False, directory='', save_filename='', file_types=()
+                webview.FileDialog.FOLDER, allow_multiple=False, directory='', save_filename='', file_types=()
             )
             if result and len(result) > 0:
                 return result[0]
