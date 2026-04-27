@@ -1,0 +1,72 @@
+=========================================================
+COMMANDES DE COMPILATION PYINSTALLER (WATERWATCHER)
+=========================================================
+
+1. WINDOWS (Depuis un terminal CMD ou PowerShell)
+---------------------------------------------------------
+Assurez-vous d'avoir Python installé et votre environnement virtuel activé (ex: `venv\Scripts\activate`).
+Lancez la commande suivante à la racine du projet :
+
+pyinstaller --noconfirm --windowed --name "WaterWatcher" ^
+    --paths "." ^
+    --hidden-import "UI.server_2" ^
+    --hidden-import "UI.server" ^
+    --add-data "UI/index_2.html;UI" ^
+    --add-data "UI/style_2.css;UI" ^
+    --add-data "UI/app_2.js;UI" ^
+    --add-data "pipeline;pipeline" ^
+    --add-data "models;models" ^
+    --hidden-import "torch" ^
+    --hidden-import "torchvision" ^
+    --hidden-import "piexif" ^
+    --hidden-import "scipy.signal" ^
+    standalone/web_wrapper.py
+
+L'exécutable sera généré dans `dist\WaterWatcher\WaterWatcher.exe`.
+(Vous pouvez aussi simplement lancer le script `build_windows.bat` qui fait la même chose).
+
+
+2. LINUX (Depuis Bash, Zsh ou Fish)
+---------------------------------------------------------
+Assurez-vous que l'environnement conda ou venv est activé (`conda activate TM-WP` ou `source venv/bin/activate`).
+Sur Linux et macOS, le séparateur pour --add-data est le DEUX-POINTS (:) et non le point-virgule (;).
+
+pyinstaller --noconfirm --windowed --name "WaterWatcher" \
+    --paths "." \
+    --hidden-import "UI.server_2" \
+    --hidden-import "UI.server" \
+    --add-data "UI/index_2.html:UI" \
+    --add-data "UI/style_2.css:UI" \
+    --add-data "UI/app_2.js:UI" \
+    --add-data "pipeline:pipeline" \
+    --add-data "models:models" \
+    --hidden-import "torch" \
+    --hidden-import "torchvision" \
+    --hidden-import "piexif" \
+    --hidden-import "scipy.signal" \
+    standalone/web_wrapper.py
+
+L'exécutable sera généré dans `dist/WaterWatcher/WaterWatcher`.
+
+
+3. macOS (Depuis le Terminal)
+---------------------------------------------------------
+Identique à Linux. Assurez-vous d'avoir activé votre environnement Python.
+
+pyinstaller --noconfirm --windowed --name "WaterWatcher" \
+    --paths "." \
+    --hidden-import "UI.server_2" \
+    --hidden-import "UI.server" \
+    --add-data "UI/index_2.html:UI" \
+    --add-data "UI/style_2.css:UI" \
+    --add-data "UI/app_2.js:UI" \
+    --add-data "pipeline:pipeline" \
+    --add-data "models:models" \
+    --hidden-import "torch" \
+    --hidden-import "torchvision" \
+    --hidden-import "piexif" \
+    --hidden-import "scipy.signal" \
+    standalone/web_wrapper.py
+
+Un fichier `WaterWatcher.app` sera généré dans le dossier `dist/`.
+Note : Sur Mac, vous devrez peut-être signer l'application ou autoriser son exécution dans les Préférences Système > Sécurité et confidentialité.

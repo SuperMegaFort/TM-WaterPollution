@@ -5,6 +5,7 @@ import json
 import shutil
 import re
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import torch
@@ -181,8 +182,8 @@ def import_and_predict():
     
     results = []
     
-    # --- PHASE 1 : COPIE & INFÉRENCE BRUTE ---
-    for i, f in enumerate(files, start=1):
+    # --- PHASE 1 : COPIE & INFÉRENCE EN MULTITHREAD ---
+    def process_image(f):
         base_name = os.path.basename(f)
         last_dot = base_name.rfind('.')
         ext = base_name[last_dot:] if last_dot != -1 else '.jpg'
@@ -210,8 +211,8 @@ def import_and_predict():
             
             if avg_brightness < 40 or color_variance < 3.0:
                 os.remove(dest_path) 
-                print(f"🗑️ Image de nuit/IR supprimée : {new_name} (Luminosité: {avg_brightness:.1f}, Variance Couleur: {color_variance:.1f})")
-                continue
+                print(f"🗑️ Image de nuit/IR supprimée : {new_name}")
+                return None
                 
             input_tensor = val_transform(img).unsqueeze(0).to(device)
             with torch.no_grad():
@@ -224,12 +225,24 @@ def import_and_predict():
             date_fmt = f"{match.group(1)}/{match.group(2)}/{match.group(3)}" if match else "N/A"
             time_fmt = f"{match.group(4)}:{match.group(5)}:{match.group(6)}" if match else "N/A"
 
-            results.append({
+            return {
                 "name": new_name, "path": dest_path, "date": date_fmt, "time": time_fmt,
                 "score": score_polluted, "label": predicted_label, "status": "ok"
-            })
+            }
         except Exception as e:
             print(f"Erreur d'inférence avec {new_name}: {e}")
+            return None
+
+    max_threads = min(32, (os.cpu_count() or 1) * 2)
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        futures = {executor.submit(process_image, f): f for f in files}
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                results.append(res)
+                
+    # Trier les résultats par date/nom pour la timeline
+    results.sort(key=lambda x: x["name"])
             
     # --- PHASE 2 : LISSAGE TEMPÓREL (FILTRE MÉDIAN) ---
     scores = [r["score"] for r in results if r["status"] == "ok"]
@@ -243,28 +256,32 @@ def import_and_predict():
                 r["label"] = 1 if r["score"] >= 0.5 else 0
                 idx += 1    
 
-    # --- PHASE 3 : ÉCRITURE DES EXIF (AVEC LES SCORES FINAUX LISSÉS) ---
-    for r in results:
-        if r["status"] == "ok":
+    # --- PHASE 3 : ÉCRITURE DES EXIF EN MULTITHREAD ---
+    def write_exif(r):
+        try:
             try:
-                try:
-                    exif_dict = piexif.load(r["path"])
-                except Exception:
-                    exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
-                
-                if piexif.ExifIFD.MakerNote in exif_dict.get("Exif", {}):
-                    del exif_dict["Exif"][piexif.ExifIFD.MakerNote]
+                exif_dict = piexif.load(r["path"])
+            except Exception:
+                exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
+            
+            if piexif.ExifIFD.MakerNote in exif_dict.get("Exif", {}):
+                del exif_dict["Exif"][piexif.ExifIFD.MakerNote]
 
-                # Injection du label lissé
-                json_tag = json.dumps({"user": r["label"], "ai": r["label"], "score": r["score"]})
-                exif_dict["0th"][piexif.ImageIFD.ImageDescription] = json_tag.encode('utf-8')
-                exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
-                exif_dict["Exif"][piexif.ExifIFD.UserComment] = b"ASCII\x00\x00\x00" + json_tag.encode('ascii')
-                
-                exif_bytes = piexif.dump(exif_dict)
-                piexif.insert(exif_bytes, r["path"])
-            except Exception as exif_err:
-                print(f"Erreur d'écriture EXIF finale pour {r['name']}: {exif_err}")
+            # Injection du label lissé
+            json_tag = json.dumps({"user": r["label"], "ai": r["label"], "score": r["score"]})
+            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = json_tag.encode('utf-8')
+            exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
+            exif_dict["Exif"][piexif.ExifIFD.UserComment] = b"ASCII\x00\x00\x00" + json_tag.encode('ascii')
+            
+            exif_bytes = piexif.dump(exif_dict)
+            piexif.insert(exif_bytes, r["path"])
+        except Exception as e:
+            print(f"Erreur écriture EXIF sur {r['name']}: {e}")
+
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        for r in results:
+            if r["status"] == "ok":
+                executor.submit(write_exif, r)
 
     return jsonify({"predictions": results, "dest_dir": dest_dir})
 

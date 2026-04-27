@@ -18,14 +18,16 @@
         <header class="tech-header">
             <div class="header-top">
                 <div class="logo-area">
-                    <div class="status-dot online"></div>
                     <h1>Labelisation des images de rivière</h1>
                 </div>
                 <div class="actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <button id="btn-config-workspace" class="tech-btn primary" style="width: 100%;">[📁] CHOISIR RÉPERTOIRE DE TRAVAIL</button>
-                    <button id="btn-load-existing" class="tech-btn primary" style="width: 100%;">[📂] OUVRIR EXISTANT</button>
-                    <button id="import-btn" class="tech-btn primary" style="width: 100%;">[+] NOUVEL IMPORT D'IMAGES</button>
-                    <button id="export-btn" class="tech-btn primary" disabled style="width: 100%;">[⬇] SAUVEGARDER</button>
+                    <button id="btn-config-workspace" class="tech-btn primary" style="width: 100%;">CHOISIR RÉPERTOIRE
+                        DE TRAVAIL</button>
+                    <button id="btn-load-existing" class="tech-btn primary" style="width: 100%;">OUVRIR DOSSIER
+                        EXISTANT</button>
+                    <button id="import-btn" class="tech-btn primary" style="width: 100%;">NOUVEL IMPORT
+                        D'IMAGES</button>
+                    <button id="export-btn" class="tech-btn primary" disabled style="width: 100%;">SAUVEGARDER</button>
                 </div>
             </div>
 
@@ -69,27 +71,36 @@
                     <div class="panel-header">
                         <div class="header-left">
                             <h2>ANALYSE DE CONFIANCE (ROC-AUC)</h2>
-                            <div style="color: var(--color-accent); font-weight: bold; font-size: 14px; margin-bottom: 4px;" id="analysis-period">Période : -- au --</div>
+                            <div style="color: var(--color-accent); font-weight: bold; font-size: 14px; margin-bottom: 4px;"
+                                id="analysis-period">Période : -- au --</div>
                             <div class="legend">
                                 <span class="legend-item polluted">■ DÉTECTION (POLLUÉ)</span>
-                                <span class="legend-item" style="color: #0f172a; font-weight: bold;">─ CONFIANCE IA</span>
+                                <span class="legend-item" style="color: #0f172a; font-weight: bold;">─ CONFIANCE
+                                    IA</span>
                             </div>
                         </div>
                         <div class="threshold-control">
-                            <span class="tech-label">SEUIL IA : 
-                                <input type="number" id="threshold-val" min="0.01" max="0.99" step="0.01" value="0.50" disabled
+                            <span class="tech-label">SEUIL IA :
+                                <input type="number" id="threshold-val" min="0.01" max="0.99" step="0.01" value="0.50"
+                                    disabled
                                     style="width: 70px; background: transparent; color: var(--color-accent); border: 1px solid var(--border-main); border-radius: 4px; font-weight: bold; outline: none; padding: 2px;">
                             </span>
-                            <input type="range" id="threshold-slider" min="0.01" max="0.99" step="0.01" value="0.50" disabled>
-                            <button id="lock-threshold-btn" class="tech-btn secondary" style="padding: 2px 6px; font-size: 14px;" title="Déverrouiller le curseur">🔒 VERROUILLÉ</button>
+                            <input type="range" id="threshold-slider" min="0.01" max="0.99" step="0.01" value="0.50"
+                                disabled>
+                            <button id="lock-threshold-btn" class="tech-btn secondary"
+                                style="padding: 2px 6px; font-size: 14px;" title="Déverrouiller le curseur">🔒
+                                VERROUILLÉ</button>
                         </div>
                     </div>
 
-                    <div id="mini-timeline-container" class="timeline-container" style="display:none; margin-bottom: 16px;">
+                    <div id="mini-timeline-container" class="timeline-container"
+                        style="display:none; margin-bottom: 16px;">
                         <div class="range-slider-wrapper" id="range-wrapper" style="display:none;">
                             <div class="slider-track" id="slider-track"></div>
-                            <input type="range" id="slider-min" class="range-input" min="0" max="100" value="0" step="1">
-                            <input type="range" id="slider-max" class="range-input" min="0" max="100" value="100" step="1">
+                            <input type="range" id="slider-min" class="range-input" min="0" max="100" value="0"
+                                step="1">
+                            <input type="range" id="slider-max" class="range-input" min="0" max="100" value="100"
+                                step="1">
                         </div>
 
                         <div class="scrubber-wrapper" id="scrubber-wrapper">
@@ -113,8 +124,12 @@
                             <h2>INSPECTION MANUELLE : <span id="zone-title" class="highlight-cyan"></span></h2>
                         </div>
                         <div class="bulk-actions" style="display: flex; gap: 8px;">
-                            <button id="bulk-clean-btn" class="tech-btn outline" style="color: var(--color-clean); border-color: var(--color-clean);">TOUT MARQUER 0 (PROPRE)</button>
-                            <button id="bulk-polluted-btn" class="tech-btn outline" style="color: var(--color-polluted); border-color: var(--color-polluted);">TOUT MARQUER 1 (POLLUÉ)</button>
+                            <button id="bulk-clean-btn" class="tech-btn outline"
+                                style="color: var(--color-clean); border-color: var(--color-clean);">TOUT MARQUER 0
+                                (PROPRE)</button>
+                            <button id="bulk-polluted-btn" class="tech-btn outline"
+                                style="color: var(--color-polluted); border-color: var(--color-polluted);">TOUT MARQUER
+                                1 (POLLUÉ)</button>
                         </div>
                     </div>
 
