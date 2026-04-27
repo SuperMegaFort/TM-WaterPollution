@@ -45,26 +45,39 @@ function showModal(url) {
 let dataPoints = [];
 let chartInstance = null;
 let currentSelection = { start: -1, end: -1 };
+let gridTimeout = null;
 
-// --- PALETTE TECHNIQUE (V2) ---
-const COLOR_CLEAN = '#00f0ff';     // Cyan technique
-const COLOR_POLLUTED = '#ff2a55';  // Rouge d'alerte technique
-const COLOR_POLLUTED_BG = 'rgba(255, 42, 85, 0.2)'; // Fond rouge semi-transparent
+// --- PALETTE PREMIUM ---
+const COLOR_CLEAN = '#10b981';     // Emerald 500
+const COLOR_POLLUTED = '#ef4444';  // Red 500
+const COLOR_POLLUTED_BG = 'rgba(239, 68, 68, 0.2)'; 
 
 // --- INITIALISATION WORKSPACE ---
-let currentWorkspace = localStorage.getItem('waterwatcher_workspace');
-if (currentWorkspace) {
-    workspaceDisplay.value = currentWorkspace;
+let currentWorkspace = "";
+async function loadConfig() {
+    try {
+        let res = await fetch('http://127.0.0.1:5000/get_config');
+        let data = await res.json();
+        if (data.workspace_dir) {
+            currentWorkspace = data.workspace_dir;
+            workspaceDisplay.value = currentWorkspace;
+        }
+    } catch(e) { console.warn("Impossible de charger la config", e); }
 }
+loadConfig();
 
 // --- EVENT LISTENERS ---
 btnConfigWorkspace.addEventListener('click', async () => {
     if (!window.pywebview || !window.pywebview.api) { alert("Mode natif requis."); return; }
-    let newWorkspace = await window.pywebview.api.open_folder_dialog("Sélectionnez le Workspace Global");
+    let newWorkspace = await window.pywebview.api.open_folder_dialog("Sélectionner le répertoire de travail");
     if (newWorkspace) {
-        localStorage.setItem('waterwatcher_workspace', newWorkspace);
-        workspaceDisplay.value = newWorkspace;
         currentWorkspace = newWorkspace;
+        workspaceDisplay.value = newWorkspace;
+        fetch('http://127.0.0.1:5000/set_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspace_dir: newWorkspace })
+        }).catch(err => console.error(err));
     }
 });
 
@@ -80,7 +93,7 @@ async function handleLoadExisting() {
     }
 
     if (!currentWorkspace) {
-        alert("Veuillez d'abord configurer un WORKSPACE DIR.");
+        alert("Veuillez d'abord choisir un répertoire de travail.");
         return;
     }
 
@@ -129,6 +142,8 @@ async function handleLoadExisting() {
                 name: pred.name,
                 date: pred.date,
                 time: pred.time,
+                shortDate: pred.date !== "N/A" ? pred.date.split('/')[0] : "N/A",
+                shortTime: pred.time !== "N/A" ? pred.time.split(':').slice(0, 2).join(':') : "N/A",
                 url: `http://127.0.0.1:5000/image/${cleanPath}`,
                 path: pred.path,
                 originalScore: pred.score,
@@ -143,6 +158,12 @@ async function handleLoadExisting() {
         miniTimelineContainer.style.display = 'block';
 
         if (dataPoints.length > 0) {
+            const periodEl = document.getElementById('analysis-period');
+            if (periodEl) {
+                const first = dataPoints[0];
+                const last = dataPoints[dataPoints.length - 1];
+                periodEl.textContent = `Période : ${first.date} ${first.shortTime} au ${last.date} ${last.shortTime}`;
+            }
             initSliders(dataPoints.length);
             renderMiniTimeline();
             initScrubber();
@@ -160,9 +181,34 @@ async function handleLoadExisting() {
 }
 
 // --- LOGIQUE DU SEUIL IA ---
-thresholdSlider.addEventListener('input', (e) => {
-    currentThreshold = parseFloat(e.target.value);
-    thresholdVal.textContent = currentThreshold.toFixed(2);
+const lockThresholdBtn = document.getElementById('lock-threshold-btn');
+
+lockThresholdBtn.addEventListener('click', () => {
+    if (thresholdSlider.disabled) {
+        if (confirm("Attention : toutes les labellisations manuelles risquent d'être modifiées si vous changez le seuil. Voulez-vous déverrouiller le curseur ?")) {
+            thresholdSlider.disabled = false;
+            thresholdVal.disabled = false;
+            lockThresholdBtn.textContent = '🔓 LIBRE';
+            lockThresholdBtn.style.color = '';
+            lockThresholdBtn.style.borderColor = '';
+        }
+    } else {
+        thresholdSlider.disabled = true;
+        thresholdVal.disabled = true;
+        lockThresholdBtn.textContent = '🔒 VERROUILLÉ';
+        lockThresholdBtn.style.color = '';
+        lockThresholdBtn.style.borderColor = '';
+    }
+});
+
+function applyThresholdChange(newVal) {
+    currentThreshold = parseFloat(newVal);
+    if (isNaN(currentThreshold)) currentThreshold = 0.5;
+    if (currentThreshold < 0) currentThreshold = 0;
+    if (currentThreshold > 1) currentThreshold = 1;
+
+    thresholdSlider.value = currentThreshold;
+    thresholdVal.value = currentThreshold.toFixed(2);
 
     if (dataPoints.length > 0) {
         // Mettre à jour les labels qui n'ont pas été forcés manuellement
@@ -175,12 +221,31 @@ thresholdSlider.addEventListener('input', (e) => {
         updateChartVisuals();
         renderMiniTimeline(); // Met à jour la barre de couleurs
 
-        // Mettre à jour la grille si une zone est ouverte
+        // Mettre à jour la grille de manière optimisée sans tout détruire
         if (currentSelection.start !== -1) {
-            renderGrid(currentSelection.start, currentSelection.end);
+            requestAnimationFrame(() => {
+                const cards = document.querySelectorAll('.large-card');
+                let cardIdx = 0;
+                for (let i = currentSelection.start; i <= currentSelection.end; i++) {
+                    if (cardIdx < cards.length) {
+                        const dp = dataPoints[i];
+                        const card = cards[cardIdx];
+                        const targetClass = `large-card ${dp.label === 1 ? 'polluted' : ''}`;
+                        if (card.className !== targetClass) {
+                            card.className = targetClass;
+                            const lbl = card.querySelector('.card-label');
+                            if (lbl) lbl.innerHTML = dp.label === 1 ? '■ POLLUÉ' : '□ PROPRE';
+                        }
+                        cardIdx++;
+                    }
+                }
+            });
         }
     }
-});
+}
+
+thresholdSlider.addEventListener('input', (e) => applyThresholdChange(e.target.value));
+thresholdVal.addEventListener('change', (e) => applyThresholdChange(e.target.value));
 
 // --- 2. NOUVEL IMPORT (AVEC IA) ---
 async function handleImportNative(event) {
@@ -190,12 +255,12 @@ async function handleImportNative(event) {
     }
 
     if (!currentWorkspace) {
-        alert("Configuration Initiale :\n\nVeuillez d'abord configurer le WORKSPACE DIR où seront enregistrées toutes vos images.");
+        alert("Configuration Initiale :\n\nVeuillez d'abord choisir le répertoire de travail où seront enregistrées toutes vos images.");
         return;
     }
 
-    alert("Veuillez maintenant sélectionner le DOSSIER SOURCE contenant les images brutes à analyser (ex: Carte SD).");
-    let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionner la source des images");
+
+    let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionner le dossier de la carte SD");
     if (!sourceDir) return;
 
     let riverName = prompt("Nom de la Rivière (ex: Avril, Ziplo, Aire...) :");
@@ -260,6 +325,8 @@ async function handleImportNative(event) {
             name: pred.name,
             date: pred.date,
             time: pred.time,
+            shortDate: pred.date !== "N/A" ? pred.date.split('/')[0] : "N/A",
+            shortTime: pred.time !== "N/A" ? pred.time.split(':').slice(0, 2).join(':') : "N/A",
             url: `http://127.0.0.1:5000/image/${cleanPath}`,
             path: pred.path,
             originalScore: pred.score,
@@ -273,6 +340,12 @@ async function handleImportNative(event) {
     miniTimelineContainer.style.display = 'block';
 
     if (total > 0) {
+        const periodEl = document.getElementById('analysis-period');
+        if (periodEl) {
+            const first = dataPoints[0];
+            const last = dataPoints[dataPoints.length - 1];
+            periodEl.textContent = `Période : ${first.date} ${first.shortTime} au ${last.date} ${last.shortTime}`;
+        }
         initSliders(total);
         renderMiniTimeline();
         initScrubber();
@@ -284,13 +357,24 @@ async function handleImportNative(event) {
 
 // --- MINI TIMELINE (Heatmap Scrubber) ---
 function renderMiniTimeline() {
-    miniTrack.innerHTML = '';
-    dataPoints.forEach((dp, i) => {
-        const item = document.createElement('div');
-        item.className = `mini-item ${dp.label === 1 ? 'polluted' : ''}`;
-        item.id = `mini-${i}`;
-        miniTrack.appendChild(item);
-    });
+    if (miniTrack.children.length !== dataPoints.length) {
+        miniTrack.innerHTML = '';
+        dataPoints.forEach((dp, i) => {
+            const item = document.createElement('div');
+            item.className = `mini-item ${dp.label === 1 ? 'polluted' : ''}`;
+            item.id = `mini-${i}`;
+            miniTrack.appendChild(item);
+        });
+    } else {
+        const children = miniTrack.children;
+        for (let i = 0; i < dataPoints.length; i++) {
+            const dp = dataPoints[i];
+            const targetClass = `mini-item ${dp.label === 1 ? 'polluted' : ''}`;
+            if (children[i].className !== targetClass) {
+                children[i].className = targetClass;
+            }
+        }
+    }
 }
 
 function initScrubber() {
@@ -307,7 +391,7 @@ function initScrubber() {
 
         scrubPreview.classList.add('active');
 
-        const previewWidth = 400;
+        const previewWidth = 420;
         const previewHeight = 260;
         let leftPos = mouseX;
 
@@ -323,7 +407,12 @@ function initScrubber() {
             scrubPreview.style.bottom = '60px';
         }
 
-        previewImg.src = dp.url;
+        const currentUrl = previewImg.getAttribute('data-url');
+        if (currentUrl !== dp.url) {
+            previewImg.src = dp.url;
+            previewImg.setAttribute('data-url', dp.url);
+        }
+        
         previewInfo.innerHTML = `[${index + 1}/${dataPoints.length}] ${dp.name}`;
 
         scrubberWrapper.style.setProperty('--cursor-x', `${mouseX}px`);
@@ -370,11 +459,15 @@ function initSliders(total) {
         zoneTitle.textContent = `[ ${count} IMG SÉLECTIONNÉES ]`;
         zoneTitle.style.color = '#e4e4e7';
         zoneSection.style.display = 'flex';
-        renderGrid(minVal, maxVal);
+        
+        clearTimeout(gridTimeout);
+        gridTimeout = setTimeout(() => {
+            renderGrid(minVal, maxVal);
+        }, 50);
 
         const pctMin = (minVal / (total - 1)) * 100;
         const pctMax = (maxVal / (total - 1)) * 100;
-        document.getElementById('slider-track').style.background = `linear-gradient(to right, #27272a ${pctMin}%, var(--color-clean) ${pctMin}%, var(--color-clean) ${pctMax}%, #27272a ${pctMax}%)`;
+        document.getElementById('slider-track').style.background = `linear-gradient(to right, #cbd5e1 ${pctMin}%, #0f172a ${pctMin}%, #0f172a ${pctMax}%, #cbd5e1 ${pctMax}%)`;
     };
 
     sliderMin.oninput = updateFromSlider;
@@ -429,7 +522,7 @@ const highlightPlugin = {
 
         // Zone sélectionnée manuellement
         if (currentSelection.start !== -1 && currentSelection.end !== -1) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             const selStartX = Math.max(left, x.getPixelForValue(currentSelection.start) - (x.width / dataPoints.length) / 2);
             const selEndX = Math.min(right, x.getPixelForValue(currentSelection.end) + (x.width / dataPoints.length) / 2);
             ctx.fillRect(selStartX, top, selEndX - selStartX, bottom - top);
@@ -444,7 +537,7 @@ const daySeparatorPlugin = {
         if (!dataPoints || dataPoints.length === 0) return;
         const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
         ctx.save();
-        ctx.strokeStyle = '#3f3f46';
+        ctx.strokeStyle = '#64748b';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
 
@@ -458,7 +551,7 @@ const daySeparatorPlugin = {
                 ctx.lineTo(xPos, bottom);
                 ctx.stroke();
 
-                ctx.fillStyle = '#71717a';
+                ctx.fillStyle = '#64748b';
                 ctx.font = '10px "JetBrains Mono", monospace';
                 ctx.fillText(dp.date, xPos + 6, top + 15);
             }
@@ -510,15 +603,15 @@ function renderChart() {
     chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: dataPoints.map(d => d.time === 'N/A' ? d.name : d.time),
+            labels: dataPoints.map(d => d.time === 'N/A' ? d.name : d.shortTime),
             datasets: [{
                 label: "CONFIANCE IA (%)",
-                data: dataPoints.map(d => d.originalScore * 100),
-                borderColor: COLOR_CLEAN,
+                data: dataPoints.map(d => d.manualOverride ? d.label * 100 : d.originalScore * 100),
+                borderColor: '#0f172a',
                 borderWidth: 2,
                 pointRadius: 0,
                 pointHoverRadius: 6,
-                pointHoverBackgroundColor: COLOR_CLEAN,
+                pointHoverBackgroundColor: '#0f172a',
                 tension: 0.2,
                 fill: false,
             }]
@@ -526,15 +619,17 @@ function renderChart() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            layout: { padding: { left: 0, right: 0, top: 10, bottom: 0 } },
+            layout: { padding: { left: 16, right: 16, top: 10, bottom: 0 } },
             interaction: { mode: 'nearest', axis: 'x', intersect: false },
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(9, 9, 11, 0.9)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    titleColor: '#0f172a',
+                    bodyColor: '#0f172a',
                     titleFont: { family: "'JetBrains Mono', monospace", size: 11 },
                     bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
-                    borderColor: '#27272a',
+                    borderColor: '#cbd5e1',
                     borderWidth: 1,
                     callbacks: {
                         label: function (context) {
@@ -550,13 +645,13 @@ function renderChart() {
             scales: {
                 x: {
                     display: true,
-                    ticks: { color: '#71717a', font: { family: "'JetBrains Mono', monospace", size: 10 }, maxTicksLimit: 20 },
-                    grid: { color: '#27272a' }
+                    ticks: { color: '#475569', font: { family: "'JetBrains Mono', monospace", size: 10 }, maxTicksLimit: 20 },
+                    grid: { color: '#cbd5e1' }
                 },
                 y: {
                     min: 0, max: 105,
-                    ticks: { color: '#71717a', font: { family: "'JetBrains Mono', monospace", size: 10 } },
-                    grid: { color: '#27272a' }
+                    ticks: { color: '#475569', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+                    grid: { color: '#cbd5e1' }
                 }
             },
             onClick: (event, elements, chart) => {
@@ -575,7 +670,10 @@ function renderChart() {
 }
 
 function updateChartVisuals() {
-    if (chartInstance) chartInstance.update();
+    if (chartInstance) {
+        chartInstance.data.datasets[0].data = dataPoints.map(d => d.manualOverride ? d.label * 100 : d.originalScore * 100);
+        chartInstance.update();
+    }
 }
 
 // --- SÉLECTION & GRILLE ---
@@ -602,11 +700,14 @@ function selectZone(index) {
         sliderMax.value = end;
         const pctMin = (start / (dataPoints.length - 1)) * 100;
         const pctMax = (end / (dataPoints.length - 1)) * 100;
-        document.getElementById('slider-track').style.background = `linear-gradient(to right, #27272a ${pctMin}%, var(--color-clean) ${pctMin}%, var(--color-clean) ${pctMax}%, #27272a ${pctMax}%)`;
+        document.getElementById('slider-track').style.background = `linear-gradient(to right, #cbd5e1 ${pctMin}%, #0f172a ${pctMin}%, #0f172a ${pctMax}%, #cbd5e1 ${pctMax}%)`;
     }
 
-    renderGrid(start, end);
-    zoneSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    clearTimeout(gridTimeout);
+    gridTimeout = setTimeout(() => {
+        renderGrid(start, end);
+        zoneSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
 }
 
 function renderGrid(start, end) {
@@ -659,6 +760,31 @@ function toggleLabel(index) {
     updateChartVisuals();
     renderGrid(currentSelection.start, currentSelection.end);
 }
+
+// --- LOGIQUE BULK ---
+const bulkCleanBtn = document.getElementById('bulk-clean-btn');
+const bulkPollutedBtn = document.getElementById('bulk-polluted-btn');
+
+function applyBulkLabel(labelVal) {
+    if (currentSelection.start === -1 || currentSelection.end === -1) return;
+    for (let i = currentSelection.start; i <= currentSelection.end; i++) {
+        const dp = dataPoints[i];
+        dp.label = labelVal;
+        dp.manualOverride = true;
+        const miniItem = document.getElementById(`mini-${i}`);
+        if (miniItem) {
+            if (labelVal === 1) miniItem.classList.add('polluted');
+            else miniItem.classList.remove('polluted');
+        }
+    }
+    updateChartVisuals();
+    renderGrid(currentSelection.start, currentSelection.end);
+}
+
+if (bulkCleanBtn && bulkPollutedBtn) {
+    bulkCleanBtn.addEventListener('click', () => applyBulkLabel(0));
+    bulkPollutedBtn.addEventListener('click', () => applyBulkLabel(1));
+}
 // --- SAUVEGARDE / EXPORT EXIF ---
 async function handleExport() {
     if (dataPoints.length === 0 || !window.currentDestDir) return;
@@ -677,6 +803,7 @@ async function handleExport() {
                 date: dp.date,
                 time: dp.time,
                 score: dp.originalScore,
+                ai_label: dp.originalScore >= currentThreshold ? 1 : 0,
                 label: dp.label,
                 status: dp.status
             }))

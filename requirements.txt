@@ -50,7 +50,7 @@ google-auth==2.47.0
 google-auth-oauthlib==0.5.2
 google-pasta==0.2.0
 grad-cam==1.5.5
-grpcio==1.48.2
+grpcio>=1.60.0
 h11==0.16.0
 h5py==3.12.1
 hf-xet==1.4.3
@@ -60,7 +60,7 @@ huggingface_hub==1.8.0
 idna==3.11
 iniconfig==2.3.0
 ipykernel==7.2.0
-ipython==9.10.0
+ipython>=8.20.0
 ipython_pygments_lexers==1.1.1
 itsdangerous==2.2.0
 jedi==0.19.2

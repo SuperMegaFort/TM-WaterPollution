@@ -6,8 +6,16 @@ import webview
 
 # Assurer que le dossier racine est dans le path pour trouver 'UI'
 sys.path.append(os.getcwd())
-from UI.server_2 import app
-# 
+# --- CHOIX DE LA VERSION ---
+USE_V2 = True # Mettez False pour revenir à la version normale sans le _2
+
+if USE_V2:
+    from UI.server_2 import app
+    APP_TITLE = "WaterPollution"
+else:
+    from UI.server import app
+    APP_TITLE = "WaterPollution"
+
 class Api:
     def open_folder_dialog(self, title):
         try:
@@ -38,7 +46,7 @@ if __name__ == '__main__':
     # 3. Création de la fenêtre native
     # On lui donne un titre, l'URL de localhost, et on active la sélection de fichiers
     window = webview.create_window(
-        'WaterWatcher - Inférence IA', 
+        APP_TITLE, 
         'http://127.0.0.1:5000',
         width=1200,
         height=900,
@@ -48,4 +56,7 @@ if __name__ == '__main__':
     )
 
     # 4. Démarrage de la boucle d'interface native (WebKit sur Mac)
-    webview.start()
+    if sys.platform == "linux":
+        webview.start(gui='qt')
+    else:
+        webview.start()

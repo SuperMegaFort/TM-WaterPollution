@@ -19,12 +19,12 @@ sys.path.append(BASE_DIR)
 # Import des fonctions d'entraînement pour récupérer la classe du modèle
 from pipeline.train_grl import WaterPollutionGRL, get_transforms
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder=os.path.dirname(os.path.abspath(__file__)), static_url_path='')
 CORS(app)
 
 @app.route('/')
 def index():
-    return app.send_static_file('index_2.html')
+    return app.send_static_file('index_v1.html')
 
 # Modèle demandé par l'utilisateur : no mask, no grl, no siamois, train all
 MODEL_PATH = os.path.join(BASE_DIR, "models", "grl", "no_mask", "no_grl", "train_all", "best_grl_model.pth")
@@ -60,12 +60,11 @@ def serve_image(filepath):
 def import_and_predict():
     data = request.json
     source_dir = data.get('source_dir')
-    workspace_dir = data.get('workspace_dir')
     river = data.get('river', "Unknown").strip().capitalize()
     pov = data.get('pov', "1").strip()
     
-    if not all([source_dir, workspace_dir]):
-        return jsonify({"error": "Dossiers source ou workspace manquants."}), 400
+    if not source_dir:
+        return jsonify({"error": "Dossier source manquant."}), 400
         
     if not os.path.isdir(source_dir):
         return jsonify({"error": "Dossier source invalide."}), 400
@@ -79,33 +78,14 @@ def import_and_predict():
     if not files:
         return jsonify({"error": "Aucune image trouvée dans le dossier source."}), 400
         
-    # Tri temporel pour première et dernière date
-    files.sort(key=lambda x: os.path.getmtime(x))
-    start_date_str = datetime.fromtimestamp(os.path.getmtime(files[0])).strftime("%Y%m%d")
-    end_date_str = datetime.fromtimestamp(os.path.getmtime(files[-1])).strftime("%Y%m%d")
-    
-    folder_name = f"{start_date_str}_to_{end_date_str}" if start_date_str != end_date_str else start_date_str
-    dest_dir = os.path.join(workspace_dir, river, str(pov), folder_name)
-    os.makedirs(dest_dir, exist_ok=True)
+    dest_dir = source_dir
     
     results = []
     
     for f in files:
         base_name = os.path.basename(f)
-        last_dot = base_name.rfind('.')
-        original_sans_ext = base_name[:last_dot] if last_dot != -1 else base_name
-        ext = base_name[last_dot:] if last_dot != -1 else '.jpg'
-        
-        if re.match(r"^\d{8}_\d{6}_", base_name):
-            new_name = base_name
-        else:
-            mod_time = datetime.fromtimestamp(os.path.getmtime(f))
-            prefix = mod_time.strftime("%d%m%Y_%H%M%S")
-            new_name = f"{prefix}_{original_sans_ext}_{river}{ext}"
-            
-        dest_path = os.path.join(dest_dir, new_name)
-        if not os.path.exists(dest_path):
-            shutil.copy2(f, dest_path)
+        dest_path = f  # Pas de copie, évaluation sur place dans le dossier source
+        new_name = base_name
             
         try:
             # Toujours utiliser l'image copiée

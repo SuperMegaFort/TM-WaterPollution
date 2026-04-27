@@ -1,30 +1,8 @@
-// DOM Elements
-const importBtn = document.getElementById('import-btn');
-const exportBtn = document.getElementById('export-btn');
-const emptyState = document.getElementById('empty-state');
-const mainInterface = document.getElementById('main-interface');
-
-const zoneSection = document.getElementById('zone-section');
-const imageGrid = document.getElementById('image-grid');
-const zoneTitle = document.getElementById('zone-title');
-
-const miniTimelineContainer = document.getElementById('mini-timeline-container');
-const miniTrack = document.getElementById('mini-track');
-const scrubberWrapper = document.getElementById('scrubber-wrapper');
-const scrubPreview = document.getElementById('scrub-preview');
-const previewImg = document.getElementById('preview-img');
-const previewInfo = document.getElementById('preview-info');
-
-const sliderMin = document.getElementById('slider-min');
-const sliderMax = document.getElementById('slider-max');
-const rangeWrapper = document.getElementById('range-wrapper');
-
-const modal = document.getElementById('image-modal');
-const modalImg = document.getElementById('modal-img');
-const closeModal = document.getElementById('close-modal');
-
-closeModal.onclick = () => { modal.style.display = 'none'; };
-modal.onclick = (e) => { if(e.target === modal) modal.style.display = 'none'; };
+console.log("WaterWatcher V1 : Script app.js chargé !");
+// Les éléments seront récupérés dans le DOMContentLoaded pour plus de sécurité.
+let importBtn, exportBtn, emptyState, mainInterface, zoneSection, imageGrid, zoneTitle;
+let miniTimelineContainer, miniTrack, scrubberWrapper, scrubPreview, previewImg, previewInfo;
+let sliderMin, sliderMax, rangeWrapper, modal, modalImg, closeModal;
 
 function showModal(url) {
     modalImg.src = url;
@@ -44,36 +22,69 @@ const COLOR_CLEAN = '#00f0ff';     // Cyan technique
 const COLOR_POLLUTED = '#ff2a55';  // Rouge d'alerte technique
 
 // --- INITIALISATION ---
-importBtn.addEventListener('click', handleImportNative);
-exportBtn.addEventListener('click', handleExport);
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM prêt dans WaterWatcher V1");
+    console.log("DOM Chargé, initialisation des boutons...");
+    
+    // Récupération des éléments
+    importBtn = document.getElementById('import-btn');
+    exportBtn = document.getElementById('export-btn');
+    console.log("Bouton Import trouvé ?", !!importBtn);
+    console.log("Bouton Export trouvé ?", !!exportBtn);
+    
+    emptyState = document.getElementById('empty-state');
+    mainInterface = document.getElementById('main-interface');
+    zoneSection = document.getElementById('zone-section');
+    imageGrid = document.getElementById('image-grid');
+    zoneTitle = document.getElementById('zone-title');
+    miniTimelineContainer = document.getElementById('mini-timeline-container');
+    miniTrack = document.getElementById('mini-track');
+    scrubberWrapper = document.getElementById('scrubber-wrapper');
+    scrubPreview = document.getElementById('scrub-preview');
+    previewImg = document.getElementById('preview-img');
+    previewInfo = document.getElementById('preview-info');
+    sliderMin = document.getElementById('slider-min');
+    sliderMax = document.getElementById('slider-max');
+    rangeWrapper = document.getElementById('range-wrapper');
+    modal = document.getElementById('image-modal');
+    modalImg = document.getElementById('modal-img');
+    closeModal = document.getElementById('close-modal');
+
+    // Gestion Modal
+    if (closeModal) closeModal.onclick = () => { modal.style.display = 'none'; };
+    if (modal) modal.onclick = (e) => { if(e.target === modal) modal.style.display = 'none'; };
+
+    if (importBtn) {
+        importBtn.addEventListener('click', handleImportNative);
+        console.log("Bouton Import prêt.");
+    } else {
+        console.error("Erreur : Bouton import-btn non trouvé !");
+    }
+    
+    if (exportBtn) {
+        exportBtn.addEventListener('click', handleExport);
+        console.log("Bouton Export prêt.");
+    }
+});
 
 // --- IMPORTATION NATIVE ---
 async function handleImportNative(event) {
-    if (!window.pywebview || !window.pywebview.api) {
-        alert("Mode natif non détecté. L'application doit être lancée dans le wrapper PyWebView.");
-        return;
-    }
-    
-    // 1. Get Workspace Directory
-    let workspaceDir = localStorage.getItem('waterwatcher_workspace');
-    if (!workspaceDir) {
-        alert("Configuration Initiale :\n\nVeuillez sélectionner le DOSSIER (Workspace) où seront enregistrées toutes vos images triées par la suite.");
-        workspaceDir = await window.pywebview.api.open_folder_dialog("Sélectionnez le Workspace Global");
-        if (!workspaceDir) return;
-        localStorage.setItem('waterwatcher_workspace', workspaceDir);
-    }
-    
-    // 2. Get Source Directory
-    alert("Veuillez maintenant sélectionner le DOSSIER SOURCE contenant les images brutes à analyser (ex: Répertoire Carte SD).");
-    let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionner la source des images");
-    if (!sourceDir) return;
-    
-    // 3. User Prompts
-    let riverName = prompt("Nom de la Rivière (ex: Avril, Ziplo, Aire...) :");
-    if (!riverName || riverName.trim() === "") return;
-    
-    let pov = prompt("Numéro de Point de Vue (ex: 1, 2, 3...) :");
-    if (!pov || pov.trim() === "") return;
+    try {
+        console.log("Clic sur Import détecté.");
+        if (!window.pywebview || !window.pywebview.api) {
+            console.error("pywebview.api non disponible.");
+            if (importBtn) importBtn.innerHTML = "❌ ERREUR: PyWebView non détecté";
+            return;
+        }
+        
+        // V1: Demander uniquement le dossier source (évaluation sur place)
+        console.log("Sélection du dossier source.");
+        let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionnez le dossier contenant les images à analyser");
+        if (!sourceDir) return;
+        
+        // 3. Valeurs par défaut pour contourner le bug du prompt natif
+        let riverName = "Ziplo";
+        let pov = "1";
     
     // Affichage interface chargement
     emptyState.style.display = 'none';
@@ -89,12 +100,11 @@ async function handleImportNative(event) {
 
     let predictions = [];
     try {
-        const response = await fetch('http://127.0.0.1:5000/import_and_predict', {
+        const response = await fetch('/import_and_predict', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 source_dir: sourceDir,
-                workspace_dir: workspaceDir,
                 river: riverName,
                 pov: pov
             })
@@ -127,7 +137,7 @@ async function handleImportNative(event) {
             name: pred.name,
             date: pred.date,
             time: pred.time,
-            url: `http://127.0.0.1:5000/image/${cleanPath}`,
+            url: `/image/${cleanPath}`,
             path: pred.path,
             originalScore: pred.score,
             label: pred.label,
@@ -145,7 +155,11 @@ async function handleImportNative(event) {
         initScrubber();
         renderChart();
     } else {
-        alert("Aucune image valide trouvée (ex: que des images de nuit).");
+        console.log("Aucune image valide trouvée.");
+    }
+    } catch(err) {
+        console.error("Erreur critique handleImport:", err);
+        if (importBtn) importBtn.innerHTML = "❌ Erreur interne (voir console)";
     }
 }
 
@@ -395,7 +409,14 @@ const axisSyncPlugin = {
     }
 };
 
-Chart.register(highlightPlugin, sliderAlignmentPlugin, daySeparatorPlugin, axisSyncPlugin);
+// --- ENREGISTREMENT PLUGINS CHART.JS ---
+try {
+    if (typeof Chart !== 'undefined') {
+        Chart.register(highlightPlugin, sliderAlignmentPlugin, daySeparatorPlugin, axisSyncPlugin);
+    }
+} catch (e) {
+    console.error("Erreur d'enregistrement Chart.js plugins:", e);
+}
 
 // --- GRAPHIQUE (CHART.JS) ---
 function renderChart() {
@@ -615,7 +636,7 @@ async function handleExport() {
             }))
         };
         
-        const response = await fetch('http://127.0.0.1:5000/save', {
+        const response = await fetch('/save', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)

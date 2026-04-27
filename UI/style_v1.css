@@ -49,6 +49,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   box-shadow: var(--shadow-glass);
+  z-index: 9000;
 }
 
 .glass-panel {

@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image, ImageStat
 import piexif
+import scipy.signal
 
 # --- CONFIGURATION CHEMINS ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +24,29 @@ except ImportError:
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
+
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+
+@app.route('/get_config', methods=['GET'])
+def get_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return jsonify(json.load(f))
+        except Exception:
+            pass
+    return jsonify({})
+
+@app.route('/set_config', methods=['POST'])
+def set_config():
+    data = request.json
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # 🟢 POINTE VERS LA NOUVELLE INTERFACE
 @app.route('/')
@@ -70,32 +94,60 @@ def load_existing():
     if not folder_path or not os.path.isdir(folder_path):
         return jsonify({"error": "Dossier invalide."}), 400
         
-    csv_path = os.path.join(folder_path, "labels.csv")
     results = []
+    valid_exts = {'.jpg', '.png', '.jpeg'}
     
-    if os.path.exists(csv_path):
-        import csv
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                img_path = os.path.join(folder_path, row.get('Nom_Image', ''))
-                if os.path.exists(img_path):
-                    results.append({
-                        "name": row.get('Nom_Image'),
-                        "path": img_path,
-                        "date": row.get('Date', 'N/A'),
-                        "time": row.get('Heure', 'N/A'),
-                        "score": float(row.get('Confidence_Modele', 0.0)),
-                        "label": int(row.get('Label_Utilisateur', 0)),
-                        "status": "ok"
-                    })
-    else:
-        return jsonify({"error": "Aucun fichier labels.csv trouvé dans ce dossier. Lancez d'abord un Nouvel Import IA."}), 400
+    files = sorted([f for f in os.listdir(folder_path) if os.path.splitext(f)[-1].lower() in valid_exts])
+    
+    if not files:
+        return jsonify({"error": "Aucune image trouvée dans ce dossier."}), 400
+        
+    for f in files:
+        img_path = os.path.join(folder_path, f)
+        
+        score = 0.0
+        user_label = 0
+        ai_label = 0
+        try:
+            exif_dict = piexif.load(img_path)
+            user_comment = exif_dict.get("Exif", {}).get(piexif.ExifIFD.UserComment, b"")
+            if user_comment.startswith(b"ASCII\x00\x00\x00"):
+                json_str = user_comment[8:].decode('ascii')
+                data_exif = json.loads(json_str)
+                score = data_exif.get("score", 0.0)
+                user_label = data_exif.get("user", 0)
+                ai_label = data_exif.get("ai", 0)
+            else:
+                desc = exif_dict.get("0th", {}).get(piexif.ImageIFD.ImageDescription, b"").decode('utf-8')
+                if desc:
+                    data_exif = json.loads(desc)
+                    score = data_exif.get("score", 0.0)
+                    user_label = data_exif.get("user", 0)
+                    ai_label = data_exif.get("ai", 0)
+        except Exception:
+            pass
+            
+        match = re.match(r"^(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})", f)
+        date_fmt = f"{match.group(1)}/{match.group(2)}/{match.group(3)}" if match else "N/A"
+        time_fmt = f"{match.group(4)}:{match.group(5)}:{match.group(6)}" if match else "N/A"
+        
+        results.append({
+            "name": f,
+            "path": img_path,
+            "date": date_fmt,
+            "time": time_fmt,
+            "score": float(score),
+            "label": int(user_label),
+            "ai_label": int(ai_label),
+            "status": "ok"
+        })
         
     return jsonify({"predictions": results, "dest_dir": folder_path})
 
 
 # --- ROUTE 3 : NOUVEL IMPORT AVEC IA ---
+
+
 @app.route('/import_and_predict', methods=['POST'])
 def import_and_predict():
     data = request.json
@@ -129,10 +181,10 @@ def import_and_predict():
     
     results = []
     
-    for f in files:
+    # --- PHASE 1 : COPIE & INFÉRENCE BRUTE ---
+    for i, f in enumerate(files, start=1):
         base_name = os.path.basename(f)
         last_dot = base_name.rfind('.')
-        original_sans_ext = base_name[:last_dot] if last_dot != -1 else base_name
         ext = base_name[last_dot:] if last_dot != -1 else '.jpg'
         
         if re.match(r"^\d{8}_\d{6}_", base_name):
@@ -140,7 +192,7 @@ def import_and_predict():
         else:
             mod_time = datetime.fromtimestamp(os.path.getmtime(f))
             prefix = mod_time.strftime("%d%m%Y_%H%M%S")
-            new_name = f"{prefix}_{original_sans_ext}_{river}{ext}"
+            new_name = f"{prefix}_{river}{ext}"
             
         dest_path = os.path.join(dest_dir, new_name)
         if not os.path.exists(dest_path):
@@ -151,11 +203,15 @@ def import_and_predict():
             gray = img.convert("L")
             avg_brightness = ImageStat.Stat(gray).mean[0]
             
-            if avg_brightness < 40:
-                # 🟢 NOUVEAU : On supprime physiquement le fichier s'il est trop sombre
+            # Détection du Noir et Blanc (IR) en comparant les moyennes R, G, B
+            stat = ImageStat.Stat(img)
+            r_mean, g_mean, b_mean = stat.mean[:3]
+            color_variance = max(abs(r_mean - g_mean), abs(g_mean - b_mean), abs(r_mean - b_mean))
+            
+            if avg_brightness < 40 or color_variance < 3.0:
                 os.remove(dest_path) 
-                print(f"🗑️ Image de nuit supprimée : {new_name}")
-                continue # On passe à la suivante sans l'ajouter aux résultats
+                print(f"🗑️ Image de nuit/IR supprimée : {new_name} (Luminosité: {avg_brightness:.1f}, Variance Couleur: {color_variance:.1f})")
+                continue
                 
             input_tensor = val_transform(img).unsqueeze(0).to(device)
             with torch.no_grad():
@@ -175,8 +231,42 @@ def import_and_predict():
         except Exception as e:
             print(f"Erreur d'inférence avec {new_name}: {e}")
             
-    return jsonify({"predictions": results, "dest_dir": dest_dir})
+    # --- PHASE 2 : LISSAGE TEMPÓREL (FILTRE MÉDIAN) ---
+    scores = [r["score"] for r in results if r["status"] == "ok"]
+    
+    if len(scores) > 3:
+        smoothed_scores = scipy.signal.medfilt(scores, kernel_size=11)
+        idx = 0
+        for r in results:
+            if r["status"] == "ok":
+                r["score"] = float(smoothed_scores[idx])
+                r["label"] = 1 if r["score"] >= 0.5 else 0
+                idx += 1    
 
+    # --- PHASE 3 : ÉCRITURE DES EXIF (AVEC LES SCORES FINAUX LISSÉS) ---
+    for r in results:
+        if r["status"] == "ok":
+            try:
+                try:
+                    exif_dict = piexif.load(r["path"])
+                except Exception:
+                    exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
+                
+                if piexif.ExifIFD.MakerNote in exif_dict.get("Exif", {}):
+                    del exif_dict["Exif"][piexif.ExifIFD.MakerNote]
+
+                # Injection du label lissé
+                json_tag = json.dumps({"user": r["label"], "ai": r["label"], "score": r["score"]})
+                exif_dict["0th"][piexif.ImageIFD.ImageDescription] = json_tag.encode('utf-8')
+                exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
+                exif_dict["Exif"][piexif.ExifIFD.UserComment] = b"ASCII\x00\x00\x00" + json_tag.encode('ascii')
+                
+                exif_bytes = piexif.dump(exif_dict)
+                piexif.insert(exif_bytes, r["path"])
+            except Exception as exif_err:
+                print(f"Erreur d'écriture EXIF finale pour {r['name']}: {exif_err}")
+
+    return jsonify({"predictions": results, "dest_dir": dest_dir})
 
 # --- ROUTE 4 : SAUVEGARDE & ÉCRITURE EXIF ---
 @app.route('/save', methods=['POST'])
@@ -188,46 +278,38 @@ def save_labels():
     if not labels or not dest_dir:
         return jsonify({"error": "Données incomplètes."}), 400
         
-    csv_path = os.path.join(dest_dir, "labels.csv")
-    
     try:
-        import csv
-        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["Date", "Heure", "Nom_Image", "Confidence_Modele", "Label_Utilisateur"])
-            
-            for item in labels:
-                writer.writerow([
-                    item.get('date', ''), item.get('time', ''), item.get('name', ''), 
-                    item.get('score', 0), item.get('label', 0)
-                ])
-                
-                # --- EXIF TAGGING ULTRA-ROBUSTE ---
-                if item.get('status') != 'night':
-                    img_path = item.get('path')
-                    if os.path.exists(img_path) and img_path.lower().endswith(('.jpg', '.jpeg')):
+        for item in labels:
+            # --- EXIF TAGGING ULTRA-ROBUSTE ---
+            if item.get('status') != 'night':
+                img_path = item.get('path')
+                if os.path.exists(img_path) and img_path.lower().endswith(('.jpg', '.jpeg')):
+                    try:
                         try:
-                            try:
-                                exif_dict = piexif.load(img_path)
-                            except Exception:
-                                exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
-                            
-                            if piexif.ExifIFD.MakerNote in exif_dict.get("Exif", {}):
-                                del exif_dict["Exif"][piexif.ExifIFD.MakerNote]
+                            exif_dict = piexif.load(img_path)
+                        except Exception:
+                            exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
+                        
+                        if piexif.ExifIFD.MakerNote in exif_dict.get("Exif", {}):
+                            del exif_dict["Exif"][piexif.ExifIFD.MakerNote]
 
-                            tag_text = "POLLUE" if item.get('label') == 1 else "PROPRE"
-                            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = f"Status: {tag_text}".encode('utf-8')
-                            exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
-                            
-                            user_comment = b"ASCII\x00\x00\x00" + f"Water Pollution: {tag_text}".encode('ascii')
-                            exif_dict["Exif"][piexif.ExifIFD.UserComment] = user_comment
-                            
-                            exif_bytes = piexif.dump(exif_dict)
-                            piexif.insert(exif_bytes, img_path)
-                        except Exception as e:
-                            print(f"[ERREUR EXIF] Impossible de tagger {item.get('name')}: {e}")
+                        ai_val = 1 if item.get('ai_label') == 1 else 0
+                        user_val = 1 if item.get('label') == 1 else 0
+                        score_val = float(item.get('score', 0.0))
+                        json_tag = json.dumps({"user": user_val, "ai": ai_val, "score": score_val})
+                        
+                        exif_dict["0th"][piexif.ImageIFD.ImageDescription] = json_tag.encode('utf-8')
+                        exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
+                        
+                        user_comment = b"ASCII\x00\x00\x00" + json_tag.encode('ascii')
+                        exif_dict["Exif"][piexif.ExifIFD.UserComment] = user_comment
+                        
+                        exif_bytes = piexif.dump(exif_dict)
+                        piexif.insert(exif_bytes, img_path)
+                    except Exception as e:
+                        print(f"[ERREUR EXIF] Impossible de tagger {item.get('name')}: {e}")
 
-        return jsonify({"success": True, "csv_path": csv_path})
+        return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
