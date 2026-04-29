@@ -133,7 +133,7 @@ async function handleLoadExisting() {
         dataPoints = data.predictions.map((pred, i) => {
             let cleanPath = pred.path.startsWith('/') ? pred.path.substring(1) : pred.path;
 
-            // 🟢 NOUVEAU : Si le CSV indique un label différent du score à 0.5, on considère que c'est un override manuel.
+            // NOUVEAU : Si le CSV indique un label différent du score à 0.5, on considère que c'est un override manuel.
             let defaultLabel = pred.score >= currentThreshold ? 1 : 0;
             let isOverridden = pred.label !== defaultLabel;
 
@@ -149,7 +149,7 @@ async function handleLoadExisting() {
                 originalScore: pred.score,
                 label: pred.label, // Label actuel (venant du CSV ou de l'IA)
                 status: pred.status,
-                manualOverride: isOverridden // 🟢 Verrou pour ne pas écraser les choix de l'utilisateur
+                manualOverride: isOverridden // Verrou pour ne pas écraser les choix de l'utilisateur
             };
         });
 
@@ -748,7 +748,7 @@ function toggleLabel(index) {
     const dp = dataPoints[index];
     dp.label = dp.label === 1 ? 0 : 1;
 
-    // 🟢 NOUVEAU : On marque l'image comme "forcée" par l'utilisateur
+    // NOUVEAU : On marque l'image comme "forcée" par l'utilisateur
     dp.manualOverride = true;
 
     const miniItem = document.getElementById(`mini-${index}`);

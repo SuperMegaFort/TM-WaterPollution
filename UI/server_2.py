@@ -21,7 +21,7 @@ sys.path.append(BASE_DIR)
 try:
     from pipeline.train_grl import WaterPollutionGRL, get_transforms
 except ImportError:
-    print("❌ Erreur : Impossible de trouver pipeline/train_grl.py")
+    print("Erreur : Impossible de trouver pipeline/train_grl.py")
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
@@ -49,13 +49,13 @@ def set_config():
         return jsonify({"error": str(e)}), 500
 
 
-# 🟢 POINTE VERS LA NOUVELLE INTERFACE
+# POINTE VERS LA NOUVELLE INTERFACE
 @app.route('/')
 def index():
     return app.send_static_file('index_2.html')
 
 # --- CHARGEMENT DU MODÈLE IA ---
-# ⚠️ MODIFIE CETTE LIGNE AVEC LE CHEMIN EXACT DE TON FICHIER .pth SI BESOIN
+# MODIFIE CETTE LIGNE AVEC LE CHEMIN EXACT DE TON FICHIER .pth SI BESOIN
 MODEL_PATH = os.path.join(BASE_DIR, "models", "grl", "no_mask", "no_grl", "train_all", "best_grl_model.pth")
 device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
@@ -71,11 +71,11 @@ try:
         global_model.to(device)
         global_model.eval()
         _, val_transform = get_transforms(scope="no_mask")
-        print("✅ Modèle IA Prêt pour l'inférence.")
+        print("Modèle IA Prêt pour l'inférence.")
     else:
-        print(f"❌ Erreur : Fichier modèle introuvable à {MODEL_PATH}")
+        print(f" Erreur : Fichier modèle introuvable à {MODEL_PATH}")
 except Exception as e:
-    print(f"❌ Erreur lors du chargement : {e}")
+    print(f" Erreur lors du chargement : {e}")
 
 
 # --- ROUTE 1 : SERVEUR D'IMAGES ---
@@ -222,7 +222,7 @@ def import_and_predict():
             # On vérifie les seuils pour le supprimer physiquement
             if avg_brightness < 40 or color_variance < 3.0:
                 os.remove(dest_path) 
-                print(f"🗑️ Image de nuit/IR supprimée : {new_name}")
+                print(f"Image de nuit/IR supprimée : {new_name}")
                 return None  # <-- TRES IMPORTANT : Continue la boucle, ne fais pas de 'return'
                 
             # 3. Inférence PyTorch sur l'image valide
