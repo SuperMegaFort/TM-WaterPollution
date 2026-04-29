@@ -81,10 +81,15 @@ except Exception as e:
 # --- ROUTE 1 : SERVEUR D'IMAGES ---
 @app.route('/image/<path:filepath>')
 def serve_image(filepath):
-    if not filepath.startswith('/'):
-        filepath = '/' + filepath
+    # Sécurité multi-plateforme : Windows vs Mac
+    if os.name == 'nt': # Si on est sous Windows
+        if filepath.startswith('/'):
+            filepath = filepath[1:]
+    else:
+        if not filepath.startswith('/'):
+            filepath = '/' + filepath
+            
     return send_file(filepath)
-
 
 # --- ROUTE 2 : OUVRIR UN DOSSIER EXISTANT (SANS IA) ---
 @app.route('/load_existing', methods=['POST'])
@@ -200,27 +205,35 @@ def import_and_predict():
             shutil.copy2(f, dest_path)
             
         try:
-            img = Image.open(dest_path).convert("RGB")
-            gray = img.convert("L")
-            avg_brightness = ImageStat.Stat(gray).mean[0]
-            
-            # Détection du Noir et Blanc (IR) en comparant les moyennes R, G, B
-            stat = ImageStat.Stat(img)
-            r_mean, g_mean, b_mean = stat.mean[:3]
-            color_variance = max(abs(r_mean - g_mean), abs(g_mean - b_mean), abs(r_mean - b_mean))
-            
+            # 1. Ouverture et lecture en mémoire sécurisée
+            with Image.open(dest_path) as img:
+                img_rgb = img.convert("RGB")
+                gray = img.convert("L")
+                
+                # Calcul de la luminosité
+                avg_brightness = ImageStat.Stat(gray).mean[0]
+
+                # Calcul de la variance RGB (Détection IR / Noir et Blanc)
+                stat = ImageStat.Stat(img_rgb)
+                r_mean, g_mean, b_mean = stat.mean[:3]
+                color_variance = max(abs(r_mean - g_mean), abs(g_mean - b_mean), abs(r_mean - b_mean))
+
+            # 2. Le fichier est maintenant déverrouillé (fin du 'with')
+            # On vérifie les seuils pour le supprimer physiquement
             if avg_brightness < 40 or color_variance < 3.0:
                 os.remove(dest_path) 
                 print(f"🗑️ Image de nuit/IR supprimée : {new_name}")
-                return None
+                return None  # <-- TRES IMPORTANT : Continue la boucle, ne fais pas de 'return'
                 
-            input_tensor = val_transform(img).unsqueeze(0).to(device)
+            # 3. Inférence PyTorch sur l'image valide
+            input_tensor = val_transform(img_rgb).unsqueeze(0).to(device)
             with torch.no_grad():
                 outputs = global_model(input_tensor)
                 probs = F.softmax(outputs, dim=1)
                 score_polluted = probs[0][1].item()
                 predicted_label = 1 if score_polluted >= 0.5 else 0
                 
+            # 4. Formatage des dates
             match = re.match(r"^(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})", new_name)
             date_fmt = f"{match.group(1)}/{match.group(2)}/{match.group(3)}" if match else "N/A"
             time_fmt = f"{match.group(4)}:{match.group(5)}:{match.group(6)}" if match else "N/A"
@@ -255,36 +268,62 @@ def import_and_predict():
                 r["score"] = float(smoothed_scores[idx])
                 r["label"] = 1 if r["score"] >= 0.5 else 0
                 idx += 1    
-
+                
     # --- PHASE 3 : ÉCRITURE DES EXIF EN MULTITHREAD ---
     def write_exif(r):
+        # 1. On extrait le chemin et le nom à partir de 'r' (et non 'item')
+        img_path = r.get('path')
+        img_name = r.get('name')
+        
+        # Sécurité : vérifier que le chemin existe bien
+        if not img_path or not os.path.exists(img_path):
+            return
+
         try:
+            # 2. Chargement des EXIF existants
             try:
-                exif_dict = piexif.load(r["path"])
+                exif_dict = piexif.load(img_path)
             except Exception:
                 exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
             
+            # Nettoyage des MakerNotes corrompues
             if piexif.ExifIFD.MakerNote in exif_dict.get("Exif", {}):
                 del exif_dict["Exif"][piexif.ExifIFD.MakerNote]
 
-            # Injection du label lissé
-            json_tag = json.dumps({"user": r["label"], "ai": r["label"], "score": r["score"]})
-            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = json_tag.encode('utf-8')
-            exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
-            exif_dict["Exif"][piexif.ExifIFD.UserComment] = b"ASCII\x00\x00\x00" + json_tag.encode('ascii')
+            # 3. Formatage universel avec le Score
+            tag_text = "POLLUE" if r.get('label') == 1 else "PROPRE"
+            score_val = r.get('score', 0.0)
             
+            info_str = f"Status: {tag_text} | Confiance: {score_val:.4f}"
+            
+            # 4. Standard EXIF (Mac/Linux)
+            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = info_str.encode('utf-8')
+            exif_dict["0th"][piexif.ImageIFD.Software] = b"WaterWatcher AI"
+            exif_dict["Exif"][piexif.ExifIFD.UserComment] = b"ASCII\x00\x00\x00" + info_str.encode('ascii', 'ignore')
+            
+            # 5. Standard Windows (Tags XP) - Encodage UTF-16LE
+            win_encoded = info_str.encode('utf-16le')
+            exif_dict["0th"][40092] = win_encoded
+            exif_dict["0th"][40095] = win_encoded
+            
+            # 6. Sauvegarde
             exif_bytes = piexif.dump(exif_dict)
-            piexif.insert(exif_bytes, r["path"])
+            piexif.insert(exif_bytes, img_path)
+            
         except Exception as e:
-            print(f"Erreur écriture EXIF sur {r['name']}: {e}")
+            # On utilise 'img_name' extrait de 'r'
+            print(f"[ERREUR EXIF] Impossible de tagger {img_name}: {e}")
 
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+    # Lancement du Multithreading
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # max_workers=None laisse Python choisir le nombre optimal de threads selon ton CPU
+    with ThreadPoolExecutor(max_workers=None) as executor:
         for r in results:
             if r["status"] == "ok":
                 executor.submit(write_exif, r)
 
     return jsonify({"predictions": results, "dest_dir": dest_dir})
-
 # --- ROUTE 4 : SAUVEGARDE & ÉCRITURE EXIF ---
 @app.route('/save', methods=['POST'])
 def save_labels():
