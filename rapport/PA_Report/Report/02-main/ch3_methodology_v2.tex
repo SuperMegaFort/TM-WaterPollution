@@ -1,0 +1,87 @@
+\chapter{Methodology: Finding IQMs relevant to quality}
+\label{chap:methodology}
+%\minitoc
+We now have a good understanding of the parameters that define ocular MRI image quality. The next phase is to adapt and develop specific IQMs for different ocular tissues, based on the results of the previous chapter. While the underlying software framework relies on established tools such as MRIQC \cite{esteban_mriqc_2017} and FetMRQC \cite{noauthor_medical-image-analysis-laboratoryfetmrqc_sr_nodate}, the focus here is on the metrics themselves, which have been selected, adapted, and developed to capture a wide range of quality attributes relevant to ocular imaging.
+
+The IQMs are grouped into three primary categories:
+\begin{enumerate}
+    \item \textbf{Statistical and General-Purpose IQMs} Metrics calculated on the global image properties, which do not require anatomical segmentation
+    \item \textbf{Segmentation-Based IQMs:} Metrics that leverage 3D segmentation data to assess the quality of specific anatomical structures within the eye.
+    \item \textbf{Novel Eye-Specific IQMs:} New metrics developed specifically to quantify unique morphological characteristics of ocular anatomy relevant to image quality
+\end{enumerate}
+
+\section{Segmentation Adaptation for Eye Anatomy}
+\label{sec:seg_adaptation}
+One of the primary tasks was to adapt the existing project framework to leverage anatomical segmentation of the eye. This integration is paramount, as these segmentations provide the essential anatomical context upon which all subsequent IQMs calculations will be based.
+
+\subsection{Defining Target Eye Tissues}
+\label{ssec:target_tissues}
+In order to calculate image quality metrics on specific anatomical regions of the eye, we need to define the segmentation class/group to base it on. So we have defined 6 specific classes. We have: "LENS", "GLOBE", "OPTIC NERVE", "FAT", "MUSCLE" and "BGAIR"
+
+\section{IQM Suite for Ocular MRI}
+The following sections detail the IQMs used in this project, categorized by their methodological approach.
+
+\subsection{Category 1: Statistical and General-Purpose IQMs}
+These metrics assess global image properties and are applied directly to the preprocessed image data without requiring detailed anatomical segmentation. They are effective in characterizing overall image intensity distribution, noise profiles, and information content.
+
+These retained and directly applied IQMs include:
+\begin{itemize}
+    \item \textbf{Intensity Statistics:} \texttt{mean}, \texttt{median}, \texttt{std} (standard deviation), \texttt{variation} (coefficient of variation), \texttt{kurtosis}, \texttt{percentile\_5}, \texttt{percentile\_95}.
+    \item \textbf{Volumetric and Positional Properties:} \texttt{mask\_volume}, \texttt{centroid}, \texttt{centroid\_full}.
+    \item \textbf{Information-Theoretic Measures:} \texttt{shannon\_entropy}, \texttt{joint\_entropy\_median}, \texttt{mi\_window} (Mutual Information), \texttt{nmi\_window} / \texttt{nmi\_median} (Normalized Mutual Information).
+    \item \textbf{Inter-Slice/Window Consistency \& Quality:} \texttt{ncc\_window} / \texttt{ncc\_median} (Normalized Cross-Correlation), \texttt{psnr\_window} (Peak Signal-to-Noise Ratio), \texttt{rmse\_window} / \texttt{nrmse\_window} (Root Mean Squared Error), \texttt{mae\_window} / \texttt{nmae\_window} (Mean Absolute Error), \texttt{ssim\_window} (Structural Similarity Index).
+    \item \textbf{Filter-Based Edge/Texture Metrics:} \texttt{filter\_laplace}, \texttt{filter\_sobel}.
+    \item \textbf{Other general metrics:} \texttt{rank\_error}.
+\end{itemize}
+
+\subsection{Category 2: Segmentation-Based IQMs}
+
+This category comprises metrics that require 3D segmentation data to derive their values. This involves both the re-targeting of existing relational metrics and the systematic application of statistical tools to all defined ocular tissues.
+
+\textbf{Re-targeting of Relational IQMs for Ocular Anatomy}
+
+Certain IQMs that measure the relationship between tissues were adapted from their original brain-specific context.
+
+\begin{itemize}
+    \item \textbf{Contrast-to-Noise Ratio (CNR) and Coefficient of Joint Variation (CJV):} Originally used to assess contrast between Gray and White Matter, these metrics were re-targeted to evaluate the relationship between the LENS and the surrounding GLOBE tissue. This provides a quantitative measure of the lens's conspicuity and the relative signal homogeneity of these key structures.
+    \item \textbf{Tissue-to-Maximum-Intensity Ratio:}  Adapted from the wm2max concept, this metric is applied individually to both the LENS and the GLOBE. It calculates the ratio of the mean intensity within the specified structure to the 99.95th percentile of the entire processed image intensity, which can help detect signal saturation or abnormalities.
+    \item \textbf{Residual Partial Volume Effect (RPVE):} This metric was adapted to assess the intensity profiles at critical anatomical interfaces within the eye, including the boundary of the LENS, the outer boundary of the GLOBE, and the specific interface between the GLOBE and the LENS.
+\end{itemize}
+
+\textbf{Systematic Application of Statistics to All Ocular Tissues}
+The framework's ability to compute statistics for any given region was systematically applied to all five defined ocular tissues (LENS, GLOBE, OPTIC\_NERVE, FAT, MUSCLE).
+
+\begin{itemize}
+    \item \textbf{General Statistics (seg\_sstats\_*, seg\_volume\_*, seg\_snr\_*):}  Summary statistics (mean, median, standard deviation, etc.), volume fractions, and tissue-specific Signal-to-Noise Ratios are calculated for each individual ocular tissue.
+    \item \textbf{Topological Metrics (seg\_topology\_*):} Betti numbers ($\beta_0, \beta_1, \beta_2$) and the Euler characteristic are computed for each tissue mask, as well as for a combined mask of all tissues. This allows for quantitative assessment of the structural integrity (e.g., number of connected components, holes, voids) of each segmented component. 
+\end{itemize}
+
+\subsection{Category 3: Novel Eye-Specific Morphological IQMs}
+\label{ssec:new_eye_iqms}
+Consistent with the discussions in Chapter 2, it was determined that certain anatomical regions of the eye would benefit from specialized quality metrics. Consequently, the sphericity index and the lens aspect ratio were developed for this purpose. The following section details their capabilities regarding image quality:
+\begin{itemize}
+    \item \textbf{Globe Sphericity (\texttt{seg\_globe\_sphericity})} This metric quantifies how closely the GLOBE segmentation resembles a perfect sphere. Deviations can indicate distortions, incomplete reconstruction, or other artifacts. The "sphericity" IQM quantifies the similarity of the GLOBE segmentation to a perfect sphere. Using the skimage library, we can obtain the volume (V) and the surface area (A). The sphericity index ($S$), as defined by \cite{bullard_defining_2013}, is a dimensionless quantity that describes how closely a given object resembles a perfect sphere.
+    \begin{equation}
+        S = \frac{\pi^{1/3} (6V)^{2/3}}{A}
+    \label{eq:sphericity_index}
+\end{equation}
+Here, $V$ represents the volume and $A$ is the surface area of the object. A value close to 1 means that the segmentation is close to a perfect sphere, a 0 means a perfect plane
+    \item \textbf{Lens Aspect Ratio (\texttt{seg\_lens\_aspect\_ratio})} This metric characterizes the shape of the lens, in particular its elongation, thanks to the ratio between its major axis and its minor axis. This IQM is useful because a good segmentation of the lens is generally ellipsoidal in shape, while a bad segmentation of the lens has more of a sphere shape. We use skimage.measure.regionprops\_table to obtain the eigenvalues of the inertia tensor. The lens aspect ratio, calculated as the ratio of the square root of the minimum to the maximum eigenvalues of the second moment matrix.
+    \begin{equation}
+        AspectRatio = \frac{\sqrt{\min(\lambda_i)}}{\sqrt{\max(\lambda_i)}}.
+        \label{eq:aspect_ratio_definition}
+    \end{equation}
+    Here, $\lambda_i$ represent the eigenvalues of the object's moment of inertia tensor. A value close to 1 means that the segmentation is close to a perfect sphere, a 0 means a perfect plane
+
+\end{itemize}
+
+\subsection{Category 4: IQMs Sourced from the MRIQC Pipeline}
+\label{ssec:mriqc_iqms}
+In addition to the metrics implemented or adapted specifically for this project, a set of established IQMs were sourced directly from the output of the standard MRIQC pipeline. These measures mainly assess global image properties related to background artifacts. They include:
+\begin{itemize}
+    \item \textbf{Entropy Focus Criterion (EFC):} Measures ghosting and blurring artifacts by quantifying the Shannon entropy of image intensities. Lower values are better.
+    \item \textbf{Foreground-Background Energy Ratio (FBER):} Calculates the ratio of energy within the foreground (eye region) to the energy in the background, providing an indication of scanner ghosting artifacts.
+    * \textbf{Full-Width at Half-Maximum (FWHM):} An estimation of the image smoothness in each direction (x, y, z), which serves as a proxy for the effective image resolution. Lower values are generally better.
+    \item \textbf{Intensity Non-Uniformity (INU):} Measures the extent of bias field artifacts across the image, typically expressed as a percentage of variation. Lower values indicate a more uniform intensity profile.
+    \item \textbf{Artifact Quality Indices (QI1, QI2):} These metrics are designed to detect artifacts in the background air region of the image. \texttt{qi\_1} quantifies the proportion of voxels corrupted by artifacts, while \texttt{qi\_2} measures the goodness-of-fit of the background noise to a theoretical distribution.
+\end{itemize}

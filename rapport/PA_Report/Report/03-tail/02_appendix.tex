@@ -1,0 +1,79 @@
+\chapter{IQMs Implemented in the MREyeQC\_PA Framework}
+\label{app:IQM}
+\minitoc
+
+This appendix provides a comprehensive list of all Image Quality Metrics (IQMs) implemented or adapted within this project's quality control framework. They are grouped by their methodological approach.
+
+\section*{I. Global Intensity Distribution \& Volumetric Properties}
+These metrics describe the overall intensity characteristics and basic volume information within the primary region of interest, calculated without detailed anatomical segmentation.
+\begin{itemize}
+    \item \texttt{mean}: Mean image intensity.
+    \item \texttt{median}: Median image intensity.
+    \item \texttt{std}: Standard deviation of image intensities.
+    \item \texttt{variation}: Coefficient of variation (std/mean) of image intensities.
+    \item \texttt{kurtosis}: Kurtosis of the image intensity distribution, indicating its "tailedness".
+    \item \texttt{percentile\_5} / \texttt{percentile\_95}: 5th and 95th percentiles of image intensity.
+    \item \texttt{centroid}: Centroid (center of mass) of image intensities, calculated on a central portion of the mask.
+    \item \texttt{centroid\_full}: Centroid of image intensities based on the full analysis mask.
+    \item \texttt{mask\_volume}: Volume of the primary analysis mask.
+\end{itemize}
+
+\section*{II. Information-Theoretic Measures}
+These metrics quantify the information content, complexity, or predictability of the image intensity distribution, often calculated between adjacent slices.
+\begin{itemize}
+    \item \texttt{shannon\_entropy}: Shannon entropy of the image intensity distribution, measuring its randomness.
+    \item \texttt{joint\_entropy\_median}: Joint entropy calculated between adjacent image slices, with median aggregation.
+    \item \texttt{mi\_window}: Mutual Information between adjacent slices using windowed aggregation.
+    \item \texttt{nmi\_window} / \texttt{nmi\_median}: Normalized Mutual Information, using windowed or median aggregation.
+\end{itemize}
+
+\section*{III. Inter-Slice / Window-Based Consistency \& Image Quality}
+These metrics are calculated between adjacent slices or within defined windows to assess consistency, noise, and structural similarity.
+\begin{itemize}
+    \item \texttt{ncc\_window} / \texttt{ncc\_median}: Normalized Cross-Correlation, a measure of slice-to-slice similarity.
+    \item \texttt{psnr\_window}: Peak Signal-to-Noise Ratio.
+    \item \texttt{rmse\_window} / \texttt{nrmse\_window}: Root Mean Squared Error and its normalized version.
+    \item \texttt{mae\_window} / \texttt{nmae\_window}: Mean Absolute Error and its normalized version.
+    \item \texttt{ssim\_window}: Structural Similarity Index, measuring perceptual image quality changes.
+\end{itemize}
+
+\section*{IV. Edge Detection / Filter-Based Metrics}
+These metrics utilize image filters to highlight edges or textural features as a proxy for image sharpness.
+\begin{itemize}
+    \item \texttt{filter\_laplace}: Mean absolute difference after applying a Laplacian filter (sensitive to edges/texture).
+    \item \texttt{filter\_sobel}: Mean absolute difference after applying a Sobel filter (edge detection).
+\end{itemize}
+
+\section*{V. Other General-Purpose IQMs}
+This category includes other metrics that assess global properties.
+\begin{itemize}
+    \item \texttt{rank\_error} / \texttt{rank\_error\_relative}: Measures the error in the low-rank approximation of the image, indicating structured noise or artifacts.
+\end{itemize}
+
+\section*{VI. Segmentation-Based Statistics}
+These metrics apply statistical calculations to specific anatomical regions defined by the segmentation masks (LENS, GLOBE, OPTIC\_NERVE, FAT, MUSCLE).
+\begin{itemize}
+    \item \texttt{seg\_sstats\_[TISSUE]\_*}: A full suite of summary statistics (mean, median, p95, p05, stdv, mad, kurtosis, n\_voxels) calculated for each individual ocular tissue.
+    \item \texttt{seg\_volume\_[TISSUE]}: The volume fraction of each individual ocular tissue relative to the total segmented tissue volume.
+    \item \texttt{seg\_snr\_[TISSUE]}: A basic Signal-to-Noise Ratio calculated for each individual ocular tissue.
+\end{itemize}
+
+\section*{VII. Segmentation-Based Relational \& Morphological IQMs}
+This category includes metrics adapted to the ocular context that measure relationships between segmented tissues, as well as novel metrics designed to quantify anatomical shape.
+\begin{itemize}
+    \item \texttt{seg\_cnr}: Contrast-to-Noise Ratio, adapted to measure the contrast between the LENS and GLOBE tissues.
+    \item \texttt{seg\_cjv}: Coefficient of Joint Variation, adapted to measure the relationship between signal variability and contrast for the LENS and GLOBE.
+    \item \texttt{lens\_to\_max\_intensity} / \texttt{globe\_to\_max\_intensity}: Ratio of the mean intensity within the LENS or GLOBE to a high percentile of the overall image intensity.
+    \item \texttt{rpve\_lens\_boundary}: Residual Partial Volume Effect at the boundary of the LENS.
+    \item \texttt{rpve\_globe\_boundary}: Residual Partial Volume Effect at the outer boundary of the GLOBE.
+    \item \texttt{rpve\_globe\_lens\_interface}: Residual Partial Volume Effect at the specific interface between the GLOBE and LENS tissues.
+    \item \texttt{seg\_globe\_sphericity}: A novel metric quantifying how closely the GLOBE segmentation resembles a perfect sphere.
+    \item \texttt{seg\_lens\_aspect\_ratio}: A novel metric quantifying the shape of the LENS via the ratio of its principal axes.
+\end{itemize}
+
+\section*{VIII. Segmentation-Based Topological IQMs}
+These metrics use topological data analysis to describe the structural integrity of segmented regions.
+\begin{itemize}
+    \item \texttt{seg\_topology\_[TISSUE]\_*}: A set of topological features including Betti numbers ($\beta_0, \beta_1, \beta_2$) and the Euler characteristic, calculated for each individual ocular tissue mask.
+    \item \texttt{seg\_topology\_mask\_*}: The same set of topological features calculated on a combined mask of all segmented ocular tissues.
+\end{itemize}

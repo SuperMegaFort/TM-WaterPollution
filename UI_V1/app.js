@@ -25,13 +25,13 @@ const COLOR_POLLUTED = '#ff2a55';  // Rouge d'alerte technique
 document.addEventListener('DOMContentLoaded', () => {
     console.log("DOM prêt dans WaterWatcher V1");
     console.log("DOM Chargé, initialisation des boutons...");
-    
+
     // Récupération des éléments
     importBtn = document.getElementById('import-btn');
     exportBtn = document.getElementById('export-btn');
     console.log("Bouton Import trouvé ?", !!importBtn);
     console.log("Bouton Export trouvé ?", !!exportBtn);
-    
+
     emptyState = document.getElementById('empty-state');
     mainInterface = document.getElementById('main-interface');
     zoneSection = document.getElementById('zone-section');
@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Gestion Modal
     if (closeModal) closeModal.onclick = () => { modal.style.display = 'none'; };
-    if (modal) modal.onclick = (e) => { if(e.target === modal) modal.style.display = 'none'; };
+    if (modal) modal.onclick = (e) => { if (e.target === modal) modal.style.display = 'none'; };
 
     if (importBtn) {
         importBtn.addEventListener('click', handleImportNative);
@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.error("Erreur : Bouton import-btn non trouvé !");
     }
-    
+
     if (exportBtn) {
         exportBtn.addEventListener('click', handleExport);
         console.log("Bouton Export prêt.");
@@ -76,88 +76,88 @@ async function handleImportNative(event) {
             if (importBtn) importBtn.innerHTML = "❌ ERREUR: PyWebView non détecté";
             return;
         }
-        
+
         // V1: Demander uniquement le dossier source (évaluation sur place)
         console.log("Sélection du dossier source.");
         let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionnez le dossier contenant les images à analyser");
         if (!sourceDir) return;
-        
+
         // 3. Valeurs par défaut pour contourner le bug du prompt natif
         let riverName = "Ziplo";
         let pov = "1";
-    
-    // Affichage interface chargement
-    emptyState.style.display = 'none';
-    mainInterface.style.display = 'flex';
-    exportBtn.disabled = true;
-    
-    const loadingScreen = document.getElementById('loading-screen');
-    const loadingCount = document.getElementById('loading-count');
-    if(loadingScreen && loadingCount) {
-        loadingScreen.style.display = 'flex';
-        loadingCount.textContent = "... Copie & IA en cours ...";
-    }
 
-    let predictions = [];
-    try {
-        const response = await fetch('/import_and_predict', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                source_dir: sourceDir,
-                river: riverName,
-                pov: pov
-            })
-        });
-        
-        if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.error || "Erreur serveur API");
+        // Affichage interface chargement
+        emptyState.style.display = 'none';
+        mainInterface.style.display = 'flex';
+        exportBtn.disabled = true;
+
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingCount = document.getElementById('loading-count');
+        if (loadingScreen && loadingCount) {
+            loadingScreen.style.display = 'flex';
+            loadingCount.textContent = "... Copie & IA en cours ...";
         }
-        const data = await response.json();
-        predictions = data.predictions;
-        window.currentDestDir = data.dest_dir; // Utilisé lors du Save EXIF
-    } catch (e) {
-        console.error("Erreur Backend :", e);
-        alert("L'importation ou l'analyse des images a échoué.\nMessage d'erreur: " + e.message);
-        if(loadingScreen) loadingScreen.style.display = 'none';
-        emptyState.style.display = 'flex';
-        mainInterface.style.display = 'none';
-        return;
-    }
 
-    // Filtrer les nuits et convertir pour le graphique
-    let validPredictions = predictions.filter(p => p.status !== "night");
-    const total = validPredictions.length;
-    
-    dataPoints = validPredictions.map((pred, i) => {
-        let cleanPath = pred.path.startsWith('/') ? pred.path.substring(1) : pred.path;
-        return {
-            id: i,
-            name: pred.name,
-            date: pred.date,
-            time: pred.time,
-            url: `/image/${cleanPath}`,
-            path: pred.path,
-            originalScore: pred.score,
-            label: pred.label,
-            status: pred.status
-        };
-    });
+        let predictions = [];
+        try {
+            const response = await fetch('/import_and_predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_dir: sourceDir,
+                    river: riverName,
+                    pov: pov
+                })
+            });
 
-    if(loadingScreen) loadingScreen.style.display = 'none';
-    exportBtn.disabled = false;
-    miniTimelineContainer.style.display = 'block';
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || "Erreur serveur API");
+            }
+            const data = await response.json();
+            predictions = data.predictions;
+            window.currentDestDir = data.dest_dir; // Utilisé lors du Save EXIF
+        } catch (e) {
+            console.error("Erreur Backend :", e);
+            alert("L'importation ou l'analyse des images a échoué.\nMessage d'erreur: " + e.message);
+            if (loadingScreen) loadingScreen.style.display = 'none';
+            emptyState.style.display = 'flex';
+            mainInterface.style.display = 'none';
+            return;
+        }
 
-    if (total > 0) {
-        initSliders(total);
-        renderMiniTimeline();
-        initScrubber();
-        renderChart();
-    } else {
-        console.log("Aucune image valide trouvée.");
-    }
-    } catch(err) {
+        // Filtrer les nuits et convertir pour le graphique
+        let validPredictions = predictions.filter(p => p.status !== "night");
+        const total = validPredictions.length;
+
+        dataPoints = validPredictions.map((pred, i) => {
+            let cleanPath = pred.path.startsWith('/') ? pred.path.substring(1) : pred.path;
+            return {
+                id: i,
+                name: pred.name,
+                date: pred.date,
+                time: pred.time,
+                url: `/image/${cleanPath}`,
+                path: pred.path,
+                originalScore: pred.score,
+                label: pred.label,
+                status: pred.status
+            };
+        });
+
+        if (loadingScreen) loadingScreen.style.display = 'none';
+        exportBtn.disabled = false;
+        miniTimelineContainer.style.display = 'block';
+
+        if (total > 0) {
+            initSliders(total);
+            renderMiniTimeline();
+            initScrubber();
+            renderChart();
+        } else {
+            console.log("Aucune image valide trouvée.");
+        }
+    } catch (err) {
         console.error("Erreur critique handleImport:", err);
         if (importBtn) importBtn.innerHTML = "❌ Erreur interne (voir console)";
     }
@@ -177,23 +177,23 @@ function renderMiniTimeline() {
 function initScrubber() {
     scrubberWrapper.onmousemove = (e) => {
         if (dataPoints.length === 0) return;
-        
+
         const rect = scrubberWrapper.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const ratio = Math.max(0, Math.min(1, mouseX / rect.width));
         const index = Math.round(ratio * (dataPoints.length - 1));
-        
+
         const dp = dataPoints[index];
         if (!dp) return;
 
         // Afficher l'aperçu
         scrubPreview.classList.add('active');
-        
+
         // --- GESTION DES BORDS POUR L'APERÇU ---
         const previewWidth = 500;
         const previewHeight = 320;
         let leftPos = mouseX;
-        
+
         // Empêcher de sortir à gauche/droite
         if (leftPos < previewWidth / 2) leftPos = previewWidth / 2;
         if (leftPos > rect.width - previewWidth / 2) leftPos = rect.width - previewWidth / 2;
@@ -238,7 +238,7 @@ function initSliders(total) {
     const updateFromSlider = (e) => {
         let minVal = parseInt(sliderMin.value);
         let maxVal = parseInt(sliderMax.value);
-        
+
         if (minVal > maxVal) {
             if (e.target === sliderMin) {
                 sliderMin.value = maxVal;
@@ -248,16 +248,16 @@ function initSliders(total) {
                 maxVal = minVal;
             }
         }
-        
+
         currentSelection = { start: minVal, end: maxVal };
         updateChartVisuals();
-        
+
         const count = maxVal - minVal + 1;
         zoneTitle.textContent = `${count} image(s) sélectionnée(s) manuellement`;
         zoneTitle.style.color = '#f8fafc';
         zoneSection.style.display = 'flex';
         renderGrid(minVal, maxVal);
-        
+
         // Mettre en couleur la zone sélectionnée sur la piste (track)
         const pctMin = (minVal / (total - 1)) * 100;
         const pctMax = (maxVal / (total - 1)) * 100;
@@ -266,9 +266,9 @@ function initSliders(total) {
 
     sliderMin.oninput = updateFromSlider;
     sliderMax.oninput = updateFromSlider;
-    
+
     // Initialisation de la couleur
-    updateFromSlider({target: null});
+    updateFromSlider({ target: null });
 }
 
 // --- PLUGIN CHART.JS POUR ALIGNER LE SLIDER ET LA TIMELINE ---
@@ -278,18 +278,18 @@ const sliderAlignmentPlugin = {
         const rangeWrap = document.getElementById('range-wrapper');
         const miniWrap = document.getElementById('scrubber-wrapper');
         const containerWrap = document.getElementById('mini-timeline-container');
-        
+
         if (!rangeWrap || !miniWrap) return;
-        
+
         const { left, width } = chart.chartArea;
-        
+
         // Aligner précisément sur la gauche de la zone de dessin Chart.js
         rangeWrap.style.marginLeft = `${left}px`;
         rangeWrap.style.width = `${width}px`;
-        
+
         miniWrap.style.marginLeft = `${left}px`;
         miniWrap.style.width = `${width}px`;
-        
+
         if (containerWrap) containerWrap.style.width = '100%';
     }
 };
@@ -300,13 +300,13 @@ const highlightPlugin = {
     beforeDraw: (chart) => {
         if (!dataPoints || dataPoints.length === 0) return;
         const { ctx, chartArea: { top, bottom, left, right }, scales: { x } } = chart;
-        
+
         ctx.save();
-        
+
         // 1) Dessiner les zones de pollution (label == 1)
         ctx.fillStyle = 'rgba(249, 115, 22, 0.2)'; // Orange
         let startX = null;
-        
+
         for (let i = 0; i < dataPoints.length; i++) {
             if (dataPoints[i].label === 1) {
                 if (startX === null) {
@@ -318,13 +318,13 @@ const highlightPlugin = {
                 }
             } else {
                 if (startX !== null) {
-                     const endX = Math.min(right, x.getPixelForValue(i) - (x.width / dataPoints.length) / 2);
-                     ctx.fillRect(startX, top, endX - startX, bottom - top);
-                     startX = null;
+                    const endX = Math.min(right, x.getPixelForValue(i) - (x.width / dataPoints.length) / 2);
+                    ctx.fillRect(startX, top, endX - startX, bottom - top);
+                    startX = null;
                 }
             }
         }
-        
+
         // 2) Dessiner la zone actuellement SELECTIONNEE 
         if (currentSelection.start !== -1 && currentSelection.end !== -1) {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; // Surbrillance blanche claire
@@ -332,7 +332,7 @@ const highlightPlugin = {
             const selEndX = Math.min(right, x.getPixelForValue(currentSelection.end) + (x.width / dataPoints.length) / 2);
             ctx.fillRect(selStartX, top, selEndX - selStartX, bottom - top);
         }
-        
+
         ctx.restore();
     }
 };
@@ -343,7 +343,7 @@ const daySeparatorPlugin = {
     beforeDraw: (chart) => {
         if (!dataPoints || dataPoints.length === 0) return;
         const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
-        
+
         ctx.save();
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
         ctx.lineWidth = 1;
@@ -356,7 +356,7 @@ const daySeparatorPlugin = {
             if (lastDate !== null && dp.date !== lastDate) {
                 // On met le trait exactement au milieu entre la dernière image du jour et la première du jour suivant
                 const xPos = x.getPixelForValue(i) - (x.width / dataPoints.length) / 2;
-                
+
                 // Ligne pointillée
                 ctx.beginPath();
                 ctx.moveTo(xPos, top);
@@ -381,26 +381,26 @@ const axisSyncPlugin = {
         if (!dataPoints || dataPoints.length === 0) return;
         const axisWrapper = document.getElementById('timeline-axis');
         if (!axisWrapper) return;
-        
+
         axisWrapper.innerHTML = '';
         const { scales: { x }, chartArea: { left: areaLeft } } = chart;
-        
+
         let lastDate = null;
         for (let i = 0; i < dataPoints.length; i++) {
             const dp = dataPoints[i];
             if (lastDate !== null && lastDate !== dp.date) {
                 // Position relative vu que #scrubber-wrapper a marginLeft = areaLeft
                 const xPos = x.getPixelForValue(i) - (x.width / dataPoints.length) / 2 - areaLeft;
-                
+
                 const tick = document.createElement('div');
                 tick.className = 'axis-tick';
                 tick.style.left = `${xPos}px`;
                 tick.innerText = dp.date;
-                
+
                 const line = document.createElement('div');
                 line.className = 'axis-line';
                 line.style.left = `${xPos}px`;
-                
+
                 axisWrapper.appendChild(tick);
                 axisWrapper.appendChild(line);
             }
@@ -421,7 +421,7 @@ try {
 // --- GRAPHIQUE (CHART.JS) ---
 function renderChart() {
     const ctx = document.getElementById('pollutionChart').getContext('2d');
-    
+
     if (chartInstance) {
         chartInstance.destroy();
     }
@@ -464,10 +464,10 @@ function renderChart() {
                 },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             const dp = dataPoints[context.dataIndex];
                             return [
-                                `Confiance: ${(dp.originalScore*100).toFixed(1)}%`,
+                                `Confiance: ${(dp.originalScore * 100).toFixed(1)}%`,
                                 `Statut Actuel: ${dp.label === 1 ? "POLLUÉ 🟠" : "PROPRE 💧"}`
                             ];
                         }
@@ -499,7 +499,7 @@ function renderChart() {
                     const xValue = chart.scales.x.getValueForPixel(canvasPosition.x);
                     if (xValue !== undefined) index = Math.round(xValue);
                 }
-                
+
                 if (index >= 0 && index < dataPoints.length) {
                     selectZone(index);
                 }
@@ -517,32 +517,32 @@ function updateChartVisuals() {
 // --- LOGIQUE DE SÉLECTION DE ZONE ---
 function selectZone(index) {
     const targetLabel = dataPoints[index].label;
-    
+
     // Trouver le bloc continu ayant le même label
     let start = index;
     while (start > 0 && dataPoints[start - 1].label === targetLabel) {
         start--;
     }
-    
+
     let end = index;
     while (end < dataPoints.length - 1 && dataPoints[end + 1].label === targetLabel) {
         end++;
     }
-    
+
     currentSelection = { start, end };
-    updateChartVisuals(); 
-    
+    updateChartVisuals();
+
     const count = end - start + 1;
     zoneTitle.textContent = `${count} image(s) ${targetLabel === 1 ? '(Pollution)' : '(Propres)'}`;
     zoneTitle.style.color = targetLabel === 1 ? COLOR_POLLUTED : COLOR_CLEAN;
 
     zoneSection.style.display = 'flex';
-    
+
     // Sync slider thumbs
     if (rangeWrapper.style.display === 'flex' || rangeWrapper.style.display === '') {
         sliderMin.value = start;
         sliderMax.value = end;
-        
+
         const pctMin = (start / (dataPoints.length - 1)) * 100;
         const pctMax = (end / (dataPoints.length - 1)) * 100;
         document.getElementById('slider-track').style.background = `linear-gradient(to right, rgba(255,255,255,0.1) ${pctMin}%, var(--color-clean) ${pctMin}%, var(--color-clean) ${pctMax}%, rgba(255,255,255,0.1) ${pctMax}%)`;
@@ -556,18 +556,18 @@ function selectZone(index) {
 // --- GRILLE D'IMAGES (LARGE) ---
 function renderGrid(start, end) {
     imageGrid.innerHTML = '';
-    
+
     for (let i = start; i <= end; i++) {
         const dp = dataPoints[i];
-        
+
         const card = document.createElement('div');
         card.className = `large-card ${dp.label === 1 ? 'polluted' : ''}`;
-        
+
         // Label superposé
         const lbl = document.createElement('div');
         lbl.className = 'card-label';
         lbl.innerHTML = dp.label === 1 ? '🟠 POLLUÉ' : '💧 PROPRE';
-        
+
         const img = document.createElement('img');
         img.src = dp.url;
         img.alt = dp.name;
@@ -585,7 +585,7 @@ function renderGrid(start, end) {
         card.appendChild(img);
         card.appendChild(lbl);
         card.appendChild(expBtn);
-        
+
         card.addEventListener('click', () => {
             toggleLabel(i);
         });
@@ -596,8 +596,8 @@ function renderGrid(start, end) {
 
 function toggleLabel(index) {
     const dp = dataPoints[index];
-    dp.label = dp.label === 1 ? 0 : 1; 
-    
+    dp.label = dp.label === 1 ? 0 : 1;
+
     // Mettre à jour l'indicateur dans la mini-timeline (Scrubber)
     const miniItem = document.getElementById(`mini-${index}`);
     if (miniItem) {
@@ -607,7 +607,7 @@ function toggleLabel(index) {
 
     // Mise à jour de la charte graphique en direct (changement du fond)
     updateChartVisuals();
-    
+
     // Rafraîchir la grille (on conserve les bornes de la sélection, même si la zone continue est brisée)
     renderGrid(currentSelection.start, currentSelection.end);
 }
@@ -635,22 +635,22 @@ async function handleExport() {
                 status: dp.status
             }))
         };
-        
+
         const response = await fetch('/save', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        
+
         if (!response.ok) throw new Error("Erreur de sauvegarde");
-        
+
         exportBtnInstance.innerHTML = "✔️ Labels & CSV Enregistrés!";
         setTimeout(() => {
             exportBtnInstance.innerHTML = originalText;
             exportBtnInstance.disabled = false;
         }, 4000);
-        
-    } catch(e) {
+
+    } catch (e) {
         console.error(e);
         alert("Erreur lors de la sauvegarde: " + e.message);
         exportBtnInstance.innerHTML = originalText;

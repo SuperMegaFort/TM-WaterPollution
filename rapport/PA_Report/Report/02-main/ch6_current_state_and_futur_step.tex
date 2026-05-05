@@ -1,0 +1,36 @@
+\chapter{Current state and futurs steps}
+\label{chap:curr_stat}
+\section{Project Summary and Current Status}
+This project represents a first step in the development of a specialized quality control tool for ocular magnetic resonance imaging (MRI). The main achievement of this work was the establishment of a robust methodology for defining and applying a comprehensive suite of image quality measures (IQMs) to ocular MRI data. By adapting an existing QC framework, we demonstrated the feasibility of quantifying a wide range of image features, from global statistics to the finest anatomical characteristics.
+
+A key outcome of this study was the development of a machine learning model capable of classifying image quality. It was demonstrated that even with a relatively small dataset of 83 test subjects, a classification model with promising performance could be successfully trained. This result constitutes a strong proof of concept, validating the selected IQMs as informative features and confirming that an automated QC pipeline for ocular MRI is an achievable goal. The established methodology provides a solid foundation on which future research and development can build.
+
+
+\section{Future Directions and Proposed Next Steps}
+The current project, while achieving positive results, can be improved in several key areas of future work to improve the robustness, accuracy, and utility of the ocular quality control tool.
+
+\subsection{Development of Advanced Segmentation-Based IQMs}
+One of the key findings of our model analysis is the good prediction of IQMs based on anatomical segmentation. Feature importance analysis consistently revealed that the model relied heavily on metrics derived from specific eye structures (e.g., the eyeball and lens) to establish its quality classifications. This underscores the importance of anatomical context in defining image quality.
+
+Therefore, a critical step is to expand the range of segmentation-based IQMs. This would involve the design and implementation of new metrics capturing more sophisticated anatomical and morphological properties relevant to image quality, such as:
+\begin{itemize}
+    \item The tortuosity and diameter of the optic nerve.
+    \item The precise positioning and orientation of the lens relative to the eyeball.
+    \item Measurements quantifying the roughness of the eyeball and lens.
+    \item Measurements of the volume and symmetry of the extraocular muscles.
+\end{itemize}
+
+The development of these novel metrics would likely improve the model's performance and provide more nuanced insights into the nature of image artifacts.
+
+\subsection{In-Depth Investigation of seg\_CJV}
+
+The coefficient of joint variation (seg\_CJV), suitable for measuring the relationship between signal variability and lens-to-eyeball contrast, was found to be a highly influential feature in all trained models. While this demonstrates its strong potential as a quality marker, its disproportionate importance warrants further investigation to ensure it is not an artifact of the current dataset or training process.
+Future work should include:
+\begin{itemize}
+    \item Sensitivity Analysis: A detailed study to understand which specific image artifacts (e.g., motion, noise, intensity non-uniformity) cause the seg\_CJV value to change significantly.
+    \item Ablation Studies: Training models with and without the seg\_CJV feature to precisely quantify its impact on overall model performance and to observe which other features gain importance in its absence.
+    \item Visual Correlation: Plotting seg\_CJV values against visual quality ratings for a range of images to build an intuitive understanding of what a "good" versus a "bad" seg\_CJV value represents.
+\end{itemize}
+
+\section{Dataset Expansion and Model Generalization}
+Although this project was successful with 83 subjects, the robustness and generalizability of the model would be significantly improved by expanding the training dataset. Future efforts should focus on acquiring a larger and more diverse set of ocular MRI image quality ratings. Particular attention should be paid to including more low-quality image examples to create a more balanced class distribution, which is essential for training less biased and more accurate classifiers.

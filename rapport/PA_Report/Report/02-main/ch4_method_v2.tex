@@ -1,0 +1,71 @@
+\chapter{Methods}
+\label{chap:methods}
+
+This chapter details the methodology used for classification models to detect ocular MRI image quality. It describes the entire model training pipeline, hyperparameter tuning, and evaluation.
+
+\section{Data Processing}
+\label{sec:data_processing}
+
+\subsection{Dataset}
+\label{ssec:data_acquisition_methods} % Changed label
+The project dataset is packaged in a CSV file. It contains the average of the overall "rating" scores of the 83 subjects (from Study of Health in Pomerania (SHIP), Germany) evaluated by the three evaluators, as well as the different IQMs calculated in the previous chapter. As a reminder, the scores range from 0 to 4, where 0 corresponds to the minimum score ("excluded") and 4 to the maximum score ("excellent"). The classes are labeled as "excluded" for scores from 0 to 1, "poor" for scores from 1 to 2, "acceptable" for scores from 2 to 3 and "excellent" for scores from 3 to 4.
+
+\subsection{The correlation-based feature selection method}
+\label{ssec:feature_preparation_methods}
+As mentioned in the previous chapter, a large number of IQMs were calculated on the images. This high number of IQMs can raise an inter-IQM correlation problem. Some IQMs may be intercorrelated and therefore inter-redundant. Since a high correlation between features (multicollinearity) can lead to model instability and potentially decrease predictive accuracy, we developed a feature selection process based on inter-IQM correlation. This process involves calculating a cross-correlation matrix for all candidate IQMs. IQM pairs with an absolute correlation coefficient above a specified threshold of 0.9 were identified as highly correlated. To reduce redundancy, one IQM from each pair was removed from the feature set. This procedure aims to produce a feature set with reduced multicollinearity for model training. This process was used for the entire testing phase
+
+% \subsection{Using the K-stratified cross-validation method}
+
+% As will be detailed in the Results section, the dataset exhibits a significant class imbalance in the distribution of image quality ratings. This presents a challenge, as models trained on such data can become biased towards the majority class, potentially leading to poor performance on the under-represented classes. To mitigate this issue and ensure a robust evaluation, a stratified K-Fold cross-validation strategy was employed. This technique guarantees that the proportional representation of each rating class is maintained across all training and validation splits, ensuring the model is consistently exposed to minority class examples and that its performance evaluation is more reliable.
+
+\section{Pipeline Overview}
+\label{sec:pipeline_overview}
+The pipeline was designed to evaluate and compare different modeling approaches for assessing the quality of ocular MRI images. The main idea is to be able to classify images below a certain threshold value as rejectable. To achieve this, two main modeling strategies were investigated: direct binary classification and a multi-class classification approach followed by binary reclassification. These strategies were tested in different scenarios, involving different definitions of the “accept” and “reject” categories and variations in the feature sets.
+
+\subsection{Scenarios}
+\label{ssec:scenarios_methods} % Changed label to avoid conflict if ssec:scenarios is used elsewhere
+
+Here are the two scenarios that were evaluated for the direct binary classification strategy, using the 83-subject dataset:
+\begin{description}
+    \item[Scenario 1] The first scenario involves training/testing the model on the entire dataset using K-stratified cross-validation. In this scenario, images are defined as rejected if their continuous score is less than 1. The remaining images are defined as accepted.
+    \item[Scenario 2] The second scenario involves training/testing the model on the entire dataset using K-stratified cross-validation as well. Images are defined as rejected if their continuous score is less than 2 (that is basically adding the "poor" cases into the "excluded" ones); the remaining images are defined as accepted.
+\end{description}
+These two scenarios aim to determine the difference in model results between a case where the classes are unbalanced and a case where the classes are balanced.
+
+\subsection{The two models}
+
+% The continuous quality ratings were transformed into target variables suitable for the different classification strategies.
+% For \textbf{binary classification models}, the "rating" column was dichotomized based on the specific threshold defined for each scenario. A new binary target column was generated, where images with ratings greater than or equal to the threshold were labeled "accept" (numeric value 1), and images with ratings below the threshold were labeled "reject" (numeric value 0).
+% For \textbf{multi-class classification models}, the continuous "rating" was discretized into the four predefined quality classes: "exclude," "poor," "acceptable," and "excellent," numerically represented as 0, 1, 2, and 3, respectively. These multi-class labels served as the primary target for the initial classification stage. Subsequently, for the final binary "accept/reject" determination, these predicted multi-class labels were re-grouped. The specific multi-classes constituting the "reject" category were configurable, allowing for flexibility in defining the final binary outcome (e.g., mapping "exclude" and "poor" to "reject", and "acceptable" and "excellent" to "accept").
+
+Image classification is evaluated using two different models.
+\begin{description}
+    \item[binary classification models] The first is a binary classification model. It converts the image quality into a binary value according to a chosen threshold. The goal of the model is to predict the output as 1 "accept" or 0 "reject" based on the results of the IQM calculated on the images in the dataset.
+    \item[multi-class classification models] The second is a multi-class classification (regression) model. The goal of the model is to predict the output as a continuous value from 0 to 4. Then, after the model's prediction, the result is binarized according to a specific chosen threshold. The goal here is to predict two binary classes: 1 "accept" and 0 "reject," as in the first model, but this time using regression.
+\end{description}
+
+
+\section{Model Training and Hyperparameter Optimisation}
+\label{sec:model_training_optimisation}
+
+\subsection{Data Splitting and Scaling}
+\label{ssec:data_splitting_scaling_methods} % Changed label
+The prepared dataset, consisting of the selected features (\texttt{X}) and the corresponding target variable (\texttt{y}), was partitioned into training and testing subsets. A standard split of 70\% for the training set and 30\% for the test set was employed. For classification tasks, this split was performed using stratification based on the target variable to ensure that the class proportions were maintained in both the training and test sets, which is particularly important for imbalanced datasets. Following the split, the numeric features in both the training and testing  sets were scaled using the StandardScaler. This scaling method standardizes features by removing the mean and scaling to unit variance. The scaler was fitted exclusively on the training data to prevent data leakage from the test set, and then used to transform both the training and test feature sets
+
+\subsection{Model Selection}
+\label{ssec:model_selection_methods} % Changed label
+The classification model explored in this project was the Random Forest Classifier. This selection was guided by its successful application in the related \textit{MRIQC} project, which served as a foundational reference for this work.
+
+\subsection{Cross-Validation Strategy}
+\label{ssec:cv_strategy_methods} % Changed label
+Considering the relatively small dataset size of 83 subjects and the presence of notable class imbalance in some experimental scenarios (such as Scenario 1 for binary classification, which had only 5 "exclude" instances), StratifiedKFold cross-validation with $k=5$ folds was the predominant strategy. This approach ensures that each fold of the cross-validation maintains a proportional representation of each class from the overall dataset, leading to more reliable model evaluation, especially with imbalanced class distributions.
+
+\subsection{Hyperparameter Optimisation}
+\label{ssec:hyperparameter_optimisation} % Changed label
+To determine the optimal set of hyperparameters for the random forest classifier, the function "GridSearchCV" was used. This technique systematically works through multiple combinations of parameter tunes, cross-validating as it goes to determine which tune gives the best performance. The grid of parameters explored included "n\_estimators" (number of trees in the forest, tested values: [50, 100, 200]), "max\_depth" (maximum depth of the trees, tested values: [None, 10, 20]), "min\_samples\_split" (minimum number of samples required to split an internal node, tested values: [2, 5, 10]), and "min\_samples\_leaf" (minimum number of samples required to be at a leaf node, tested values: [1, 2, 4]).
+The performance metric used to guide the grid search varied by task: "roc\_auc" was used for binary classification scenarios, while "f1\_macro" was employed for the initial multi-class classification stage (predicting the four quality categories). Furthermore, to mitigate the impact of imbalanced class distributions during training, the Random Forest Classifier was configured with the "class\_weight='balanced'" parameter, which automatically adjusts class weights inversely proportional to their frequencies.
+
+% --- Section IV. Model Evaluation would go here, detailing the metrics used ---
+% --- Section V. Scenario Comparison would go here ---
+% --- Section VI. Model Saving would go here ---
+

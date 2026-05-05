@@ -4,24 +4,24 @@ import threading
 import time
 import webview
 
-# Assurer que le dossier racine est dans le path pour trouver 'UI'
+
 sys.path.append(os.getcwd())
-# --- CHOIX DE LA VERSION ---
-USE_V2 = True # Mettez False pour revenir à la version normale sans le _2
+
+USE_V2 = True 
 
 if USE_V2:
-    from UI.server_2 import app
-    APP_TITLE = "WaterPollution"
+    from UI_V2.server import app
+    APP_TITLE = "WaterPollution V2"
 else:
-    from UI.server import app
-    APP_TITLE = "WaterPollution"
+    from UI_V1.server import app
+    APP_TITLE = "WaterPollution V1"
 
 class Api:
-    def open_folder_dialog(self, title):
+    def open_folder_dialog(self, title, directory=''):
         try:
             active_window = webview.windows[0]
             result = active_window.create_file_dialog(
-                webview.FileDialog.FOLDER, allow_multiple=False, directory='', save_filename='', file_types=()
+                webview.FileDialog.FOLDER, allow_multiple=False, directory=directory, save_filename='', file_types=()
             )
             if result and len(result) > 0:
                 return result[0]
@@ -31,20 +31,17 @@ class Api:
             return None
 
 def start_flask():
-    # On lance Flask sur le port 5000 sans le mode debug pour la stabilité
+   
     app.run(host='127.0.0.1', port=5000, debug=False, threaded=True)
 
 if __name__ == '__main__':
-    # 1. Lancement du serveur Flask dans un thread séparé
+
     t = threading.Thread(target=start_flask)
     t.daemon = True
     t.start()
 
-    # 2. On attend une seconde que le serveur démarre
     time.sleep(1)
 
-    # 3. Création de la fenêtre native
-    # On lui donne un titre, l'URL de localhost, et on active la sélection de fichiers
     window = webview.create_window(
         APP_TITLE, 
         'http://127.0.0.1:5000',
@@ -55,7 +52,8 @@ if __name__ == '__main__':
         js_api=Api()
     )
 
-    # 4. Démarrage de la boucle d'interface native (WebKit sur Mac)
+    # erreur sur linux entre pywebview et gtk3
+    # solution : forcer l'utilisation de qt
     if sys.platform == "linux":
         webview.start(gui='qt')
     else:

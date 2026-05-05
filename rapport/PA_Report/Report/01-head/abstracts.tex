@@ -1,0 +1,40 @@
+% File: 01-head/abstracts.tex
+
+% English Abstract
+\selectlanguage{english}
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract} % Add English abstract to ToC
+\minitoc
+The diagnostic utility of ocular Magnetic Resonance Imaging (MRI) is critically dependent on image quality, yet manual quality control (QC) is subjective and labor-intensive. This project addresses the need for a specialized, automated QC system for eye MRI. We adapted an existing QC framework to develop MREyeQC, a pipeline that computes a comprehensive suite of Image Quality Measures (IQMs), including novel metrics based on anatomical segmentations of the eye. Using a dataset from 83 subjects, we trained a machine learning classifier to automatically distinguish between clinically acceptable and poor-quality images. The model demonstrated promising predictive performance, with results indicating that IQMs derived from anatomical structures, such as the lens and globe, were the most powerful predictors of quality. This work establishes a successful proof-of-concept for an automated QC tool, laying the foundation to improve the reliability and efficiency of large-scale ocular MRI research.
+
+% Automated Quality Control (QC) is crucial for ensuring the reliability of medical imaging data, particularly for advanced techniques like Super-Resolution Reconstruction (SRR). This project focused on adapting an existing SRR QC framework, FetMRQC\_SR, originally developed for fetal brain MRI, to assess the quality of SRR eye MRI. The core of this adaptation involved re-targeting the pipeline's segmentation understanding and Image Quality Metrics (IQMs) to be relevant to eye anatomy.
+
+% Key steps included defining specific eye tissue classes, implementing robust mapping from raw segmentation labels, and significantly revising the IQM suite. Brain-specific metrics were adapted (e.g., CNR, CJV for Lens/Globe), new eye-specific morphological IQMs (Globe Sphericity, Lens Aspect Ratio) were introduced, and a data-driven foreground mask generation technique was implemented. Furthermore, established metrics from the MRIQC framework (FBER, SNR Dietrich, EFC, QI1/QI2, Tissue-to-Max ratio, RPVE) were adapted. The project utilized custom utility functions for data loading, feature management, and potentially group-aware cross-validation strategies, alongside custom model wrappers for machine learning.
+
+% Significant technical challenges were addressed, including data type mismatches, argument passing, robust topological analysis, and morphological operation compatibility. An iterative debugging process was essential.
+
+% The adapted pipeline now successfully computes an expanded, tailored set of IQMs for SRR eye images. A preliminary machine learning model, leveraging these IQMs and manual QC ratings, has been trained using a structured workflow involving feature scaling, hyperparameter tuning via cross-validation (potentially group-aware), and evaluation with metrics like balanced accuracy. The immediate next step is the comprehensive evaluation of this model's performance. This work establishes a foundation for automated QC in SRR eye imaging research.
+
+
+% Automated quality control (QC) is crucial for reliable processing of ocular MRI (MR-Eye). This project successfully identified novel eye-specific morphological Image Quality Metrics (IQMs), such as globe sphericity and lens aspect ratio. Additionally, MRIQC-inspired metrics and comprehensive segmentation-based statistics were integrated in the pipeline.
+
+% The MREyeQC system efficiently extracts quantitative features from ocular MRI data, overcoming technical challenges. An initial Random Forest classifier was trained using these IQMs and manual QC ratings. The workflow included feature scaling, hyperparameter tuning via stratified 5-fold cross-validation, and class imbalance correction strategies. Preliminary evaluation on a limited test set (N = 20, 15\% 'reject' class) yielded an overall precision of 0.85 and an ROC AUC of 0.66. However, the model showed 0.00 recall for the 'reject' class, highlighting the impact of small dataset size (N = 83 total images) and significant class imbalance on identifying poor-quality images.
+
+% This work establishes a critical foundation and comprehensive IQM framework for objective automated QC in MR-Eye research. While the initial model underscores the need for dataset expansion, especially for under-represented quality classes, and further model refinement, the developed pipeline offers a robust platform for future advancements to enhance the reliability and reproducibility of quantitative MR-Eye studies.
+% \vspace{1cm} \\
+
+% \noindent\textbf{Keywords:} \Keywords % From metadata.tex
+
+% % French Abstract (Example - uncomment and provide translation if needed)
+% \cleardoublepage
+% \selectlanguage{french}
+% \chapter*{Résumé}
+% \addcontentsline{toc}{chapter}{Résumé} % Add French abstract to ToC
+% \minitoc
+% %
+% % VOTRE RÉSUMÉ EN FRANÇAIS ICI
+% %
+% \vspace{1cm}
+% \noindent\textbf{Mots-clés:} [Vos mots-clés en français]
+
+\selectlanguage{english} % Return to English for the rest of the document

@@ -4,6 +4,7 @@ import io
 import json
 import shutil
 import re
+import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, request, jsonify, send_file
@@ -48,15 +49,22 @@ def set_config():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Variable globale pour l'avancement
+global_progress = {"total": 0, "processed": 0, "start_time": 0}
+
+@app.route('/progress', methods=['GET'])
+def get_progress():
+    return jsonify(global_progress)
+
 
 # POINTE VERS LA NOUVELLE INTERFACE
 @app.route('/')
 def index():
-    return app.send_static_file('index_2.html')
+    return app.send_static_file('index.html')
 
 # --- CHARGEMENT DU MODÈLE IA ---
 # MODIFIE CETTE LIGNE AVEC LE CHEMIN EXACT DE TON FICHIER .pth SI BESOIN
-MODEL_PATH = os.path.join(BASE_DIR, "models", "grl", "no_mask", "no_grl", "train_all", "best_grl_model.pth")
+MODEL_PATH = os.path.join(BASE_DIR, "standalone", "best_model.pth")
 device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
 print(f"Chargement du modèle : {MODEL_PATH} sur {device}...")
@@ -103,7 +111,16 @@ def load_existing():
     results = []
     valid_exts = {'.jpg', '.png', '.jpeg'}
     
-    files = sorted([f for f in os.listdir(folder_path) if os.path.splitext(f)[-1].lower() in valid_exts])
+    def get_sort_key(f):
+        # Format: DDMMYYYY_HHMMSS_...
+        match = re.match(r"^(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})", f)
+        if match:
+            # Retourne YYYYMMDD_HHMMSS
+            return f"{match.group(3)}{match.group(2)}{match.group(1)}_{match.group(4)}{match.group(5)}{match.group(6)}"
+        return f
+
+    files = [f for f in os.listdir(folder_path) if os.path.splitext(f)[-1].lower() in valid_exts]
+    files.sort(key=get_sort_key)
     
     if not files:
         return jsonify({"error": "Aucune image trouvée dans ce dossier."}), 400
@@ -187,6 +204,11 @@ def import_and_predict():
     
     results = []
     
+    global global_progress
+    global_progress["total"] = len(files)
+    global_progress["processed"] = 0
+    global_progress["start_time"] = time.time()
+    
     # --- PHASE 1 : COPIE & INFÉRENCE EN MULTITHREAD ---
     def process_image(f):
         base_name = os.path.basename(f)
@@ -253,9 +275,17 @@ def import_and_predict():
             res = future.result()
             if res:
                 results.append(res)
+            global_progress["processed"] += 1
                 
-    # Trier les résultats par date/nom pour la timeline
-    results.sort(key=lambda x: x["name"])
+    # Trier les résultats par date réelle (YYYYMMDD) et non alphabétiquement (DDMMYYYY)
+    def get_result_sort_key(r):
+        name = r["name"]
+        match = re.match(r"^(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})", name)
+        if match:
+            return f"{match.group(3)}{match.group(2)}{match.group(1)}_{match.group(4)}{match.group(5)}{match.group(6)}"
+        return name
+
+    results.sort(key=get_result_sort_key)
             
     # --- PHASE 2 : LISSAGE TEMPÓREL (FILTRE MÉDIAN) ---
     scores = [r["score"] for r in results if r["status"] == "ok"]
@@ -315,8 +345,6 @@ def import_and_predict():
             print(f"[ERREUR EXIF] Impossible de tagger {img_name}: {e}")
 
     # Lancement du Multithreading
-    from concurrent.futures import ThreadPoolExecutor
-    
     # max_workers=None laisse Python choisir le nombre optimal de threads selon ton CPU
     with ThreadPoolExecutor(max_workers=None) as executor:
         for r in results:

@@ -30,6 +30,7 @@ const btnConfigWorkspace = document.getElementById('btn-config-workspace');
 const btnLoadExisting = document.getElementById('btn-load-existing');
 const thresholdSlider = document.getElementById('threshold-slider');
 const thresholdVal = document.getElementById('threshold-val');
+const gridSizeSlider = document.getElementById('grid-size-slider');
 let currentThreshold = 0.50;
 
 // Gestion Modal
@@ -68,7 +69,7 @@ loadConfig();
 
 // --- EVENT LISTENERS ---
 btnConfigWorkspace.addEventListener('click', async () => {
-    if (!window.pywebview || !window.pywebview.api) { alert("Mode natif requis."); return; }
+    if (!window.pywebview || !window.pywebview.api) { alert("Erreur : L'application n'est pas lancée en mode bureau. Cette fonctionnalité est indisponible dans le navigateur."); return; }
     let newWorkspace = await window.pywebview.api.open_folder_dialog("Sélectionner le répertoire de travail");
     if (newWorkspace) {
         currentWorkspace = newWorkspace;
@@ -93,11 +94,11 @@ async function handleLoadExisting() {
     }
 
     if (!currentWorkspace) {
-        alert("Veuillez d'abord choisir un répertoire de travail.");
+        alert("Attention : Vous devez d'abord sélectionner un dossier d'enregistrement (Étape 1) avant de pouvoir continuer.");
         return;
     }
 
-    let targetFolder = await window.pywebview.api.open_folder_dialog("Sélectionnez un dossier déjà analysé");
+    let targetFolder = await window.pywebview.api.open_folder_dialog("Sélectionnez un dossier déjà analysé", currentWorkspace);
     if (!targetFolder) return;
 
     currentFolderDisplay.value = targetFolder;
@@ -173,7 +174,7 @@ async function handleLoadExisting() {
         }
 
     } catch (e) {
-        alert("Erreur : " + e.message);
+        alert("Erreur lors de l'ouverture :\n" + e.message);
         if (loadingScreen) loadingScreen.style.display = 'none';
         emptyState.style.display = 'flex';
         mainInterface.style.display = 'none';
@@ -185,17 +186,17 @@ const lockThresholdBtn = document.getElementById('lock-threshold-btn');
 
 lockThresholdBtn.addEventListener('click', () => {
     if (thresholdSlider.disabled) {
-        if (confirm("Attention : toutes les labellisations manuelles risquent d'être modifiées si vous changez le seuil. Voulez-vous déverrouiller le curseur ?")) {
+        if (confirm("Voulez-vous déverrouiller le curseur de seuil IA ?\n\n(Note: Les images que vous avez manuellement corrigées ne seront pas affectées par le changement de ce seuil).")) {
             thresholdSlider.disabled = false;
             thresholdVal.disabled = false;
-            lockThresholdBtn.textContent = '🔓 LIBRE';
+            lockThresholdBtn.textContent = '🔓 SEUIL LIBRE';
             lockThresholdBtn.style.color = '';
             lockThresholdBtn.style.borderColor = '';
         }
     } else {
         thresholdSlider.disabled = true;
         thresholdVal.disabled = true;
-        lockThresholdBtn.textContent = '🔒 VERROUILLÉ';
+        lockThresholdBtn.textContent = '🔒 SEUIL VERROUILLÉ (CLIQUEZ POUR DÉBLOQUER)';
         lockThresholdBtn.style.color = '';
         lockThresholdBtn.style.borderColor = '';
     }
@@ -247,20 +248,30 @@ function applyThresholdChange(newVal) {
 thresholdSlider.addEventListener('input', (e) => applyThresholdChange(e.target.value));
 thresholdVal.addEventListener('change', (e) => applyThresholdChange(e.target.value));
 
+// --- LOGIQUE TAILLE DE GRILLE ---
+if (gridSizeSlider) {
+    gridSizeSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        document.documentElement.style.setProperty('--grid-cols', val);
+    });
+    // Initialiser
+    document.documentElement.style.setProperty('--grid-cols', gridSizeSlider.value);
+}
+
 // --- 2. NOUVEL IMPORT (AVEC IA) ---
 async function handleImportNative(event) {
     if (!window.pywebview || !window.pywebview.api) {
-        alert("Mode natif non détecté.");
+        alert("Erreur : L'application n'est pas lancée en mode bureau. Cette fonctionnalité est indisponible dans le navigateur.");
         return;
     }
 
     if (!currentWorkspace) {
-        alert("Configuration Initiale :\n\nVeuillez d'abord choisir le répertoire de travail où seront enregistrées toutes vos images.");
+        alert("Attention : Veuillez d'abord choisir le dossier d'enregistrement (Étape 1) où seront stockées toutes les images importées.");
         return;
     }
 
 
-    let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionner le dossier de la carte SD");
+    let sourceDir = await window.pywebview.api.open_folder_dialog("Sélectionner le dossier de la carte SD", currentWorkspace);
     if (!sourceDir) return;
 
     let riverName = prompt("Nom de la Rivière (ex: Avril, Ziplo, Aire...) :");
@@ -270,16 +281,56 @@ async function handleImportNative(event) {
     if (!pov || pov.trim() === "") return;
 
     // Affichage interface chargement
+    // modify it to have a fix size boxe instead of a box that changer with the text
+    
     emptyState.style.display = 'none';
     mainInterface.style.display = 'flex';
     exportBtn.disabled = true;
 
     const loadingScreen = document.getElementById('loading-screen');
     const loadingCount = document.getElementById('loading-count');
+    const loadingBar = document.getElementById('loading-bar');
+    const loadingEta = document.getElementById('loading-eta');
+    
     if (loadingScreen && loadingCount) {
         loadingScreen.style.display = 'flex';
-        loadingCount.textContent = "... Copie & Inférence IA en cours ...";
+        loadingCount.textContent = "0";
+        if (loadingBar) loadingBar.style.width = '0%';
+        if (loadingEta) loadingEta.textContent = 'Calcul...';
     }
+
+    let progressInterval = setInterval(async () => {
+        try {
+            const res = await fetch('http://127.0.0.1:5000/progress');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.total > 0) {
+                    loadingCount.textContent = `${data.processed} / ${data.total}`;
+                    const percent = (data.processed / data.total) * 100;
+                    if (loadingBar) loadingBar.style.width = `${percent}%`;
+                    
+                    if (data.processed > 0 && data.start_time > 0) {
+                        const elapsed = (Date.now() / 1000) - data.start_time;
+                        const timePerItem = elapsed / data.processed;
+                        const remainingItems = data.total - data.processed;
+                        const remainingTime = remainingItems * timePerItem;
+                        
+                        if (loadingEta) {
+                            if (remainingTime < 60) {
+                                loadingEta.textContent = `${Math.round(remainingTime)} secondes`;
+                            } else {
+                                const m = Math.floor(remainingTime / 60);
+                                const s = Math.round(remainingTime % 60);
+                                loadingEta.textContent = `${m} min ${s} sec`;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // Ignorer les erreurs de requêtes intermédiaires
+        }
+    }, 1000);
 
     let predictions = [];
     try {
@@ -307,11 +358,13 @@ async function handleImportNative(event) {
 
     } catch (e) {
         console.error("Erreur Backend :", e);
-        alert("L'importation ou l'analyse des images a échoué.\nMessage d'erreur: " + e.message);
+        alert("Erreur critique lors de l'évaluation ou de la copie des images.\n\nDétails : " + e.message + "\n\nVérifiez que le chemin de la carte SD et du dossier d'enregistrement sont corrects.");
         if (loadingScreen) loadingScreen.style.display = 'none';
         emptyState.style.display = 'flex';
         mainInterface.style.display = 'none';
         return;
+    } finally {
+        clearInterval(progressInterval);
     }
 
     // Filtrer les nuits et convertir
@@ -351,7 +404,7 @@ async function handleImportNative(event) {
         initScrubber();
         renderChart();
     } else {
-        alert("Aucune image valide trouvée (ex: que des images de nuit).");
+        alert("Erreur : Aucune image analysable n'a été trouvée dans le dossier source.\n\nSoit le dossier est vide, soit il ne contient que des images de nuit qui ont été filtrées automatiquement.");
     }
 }
 
@@ -391,7 +444,7 @@ function initScrubber() {
 
         scrubPreview.classList.add('active');
 
-        const previewWidth = 420;
+        const previewWidth = 640;
         const previewHeight = 260;
         let leftPos = mouseX;
 

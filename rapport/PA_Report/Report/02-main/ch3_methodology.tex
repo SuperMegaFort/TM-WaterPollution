@@ -1,0 +1,130 @@
+\chapter{Methodology: Adapting FetMRQC\_SR for Eye Tissues and ML Workflow}
+\label{chap:methodology}
+%\minitoc
+
+With a comprehensive understanding of the image data and existing segmentations, the next phase involved focusing on adapting and developing Image Quality Metrics (IQMs) specifically for the different ocular tissues. For this purpose, FetMRQC \cite{noauthor_medical-image-analysis-laboratoryfetmrqc_sr_nodate} was used, a specialized subcode of the MRIQC project \cite{esteban_mriqc_2017},developed for fetal brain imaging.
+
+\section{Segmentation Adaptation for Eye Anatomy}
+\label{sec:seg_adaptation}
+One of the primary tasks was to adapt the existing project framework to leverage anatomical segmentation of the eye. This integration is paramount, as these segmentations provide the essential anatomical context upon which all subsequent IQMs calculations will be based.
+
+\subsection{Defining Target Eye Tissues}
+\label{ssec:target_tissues}
+To allow the calculation of IQMs on specific anatomical regions of the eye, these parts first needed to be precisely extracted. They were categorized into the following classes: 'LENS', 'GLOBE', 'OPTIC NERVE', 'FAT', 'MUSCLE', and 'BGAIR'. These definitions directly correspond to the segmentation groups that will be utilized for IQMs computation.
+
+\section{Image Quality Metric (IQMs) Adaptation and Expansion}
+\label{sec:iqm_adaptation_expansion}
+With these anatomical classes now defined, the adaptation of existing IQMs within the FetMRQC project was undertaken. Additionally, novel metrics, specifically the sphericity index and the aspect ratio (ratio of major and minor axes) of the lens, were developed to further quantify image quality.
+
+\subsubsection{Categorization of IQM Adaptations}
+\label{sec:iqm_categorization}
+
+Adapting IQMs can be categorized into several functions.
+
+\begin{enumerate}
+    \item \textbf{Direct Application of General-Purpose IQMs:} Metrics that assess global image characteristics without relying on specific anatomical priors.
+    \item \textbf{Re-targeting of Brain-Specific IQMs:} Metrics originally defined for specific brain tissues (e.g., Gray Matter, White Matter) that required re-definition for analogous or relevant ocular structures (e.g., Lens, Globe).
+    \item \textbf{Development of Novel Eye-Specific IQMs:} New metrics designed to capture unique morphological or quality aspects of ocular anatomy.
+    \item \textbf{Systematic Application of Segmentation-Based Metrics:} Extension of existing statistical and topological metrics to all newly defined ocular tissues.
+\end{enumerate}
+The following sections elaborate on each of these categories. For a comprehensive list of all IQMs integrated into the MREyeQC framework, please refer to Appendix~\ref{app:IQM} 
+
+\section{Direct Application of General-Purpose IQMs}
+\label{sec:general_purpose_iqms}
+
+Image Quality Metrics (IQMs) designed to assess general image properties can be directly applied without modification, as they utilize the global image rather than requiring specific segmentations. These metrics are effective in characterizing overall image intensity distribution, noise profiles, information content, inter-slice coherence, and fundamental volumetric properties of the primary region of interest.
+
+These retained and directly applied IQMs include:
+\begin{itemize}
+    \item \textbf{Intensity Statistics:} \texttt{mean}, \texttt{median}, \texttt{std} (standard deviation), \texttt{variation} (coefficient of variation), \texttt{kurtosis}, \texttt{percentile\_5}, \texttt{percentile\_95}.
+    \item \textbf{Volumetric and Positional Properties:} \texttt{mask\_volume}, \texttt{centroid}, \texttt{centroid\_full}.
+    \item \textbf{Information-Theoretic Measures:} \texttt{shannon\_entropy}, \texttt{joint\_entropy\_median}, \texttt{mi\_window} (Mutual Information), \texttt{nmi\_window} / \texttt{nmi\_median} (Normalized Mutual Information).
+    \item \textbf{Inter-Slice/Window Consistency \& Quality:} \texttt{ncc\_window} / \texttt{ncc\_median} (Normalized Cross-Correlation), \texttt{psnr\_window} (Peak Signal-to-Noise Ratio), \texttt{rmse\_window} / \texttt{nrmse\_window} (Root Mean Squared Error), \texttt{mae\_window} / \texttt{nmae\_window} (Mean Absolute Error), \texttt{ssim\_window} (Structural Similarity Index).
+    \item \textbf{Filter-Based Edge/Texture Metrics:} \texttt{filter\_laplace}, \texttt{filter\_sobel}.
+    \item \textbf{Other general metrics:} \texttt{rank\_error}.
+\end{itemize}
+
+\section{Re-targeting of Brain-Specific IQMs for Ocular Anatomy}
+\label{sec:retargeting_iqms}
+
+Certain IQMs within the FetMRQC project originally rely on specific segmentations, such as gray matter (GM) and white matter (WM). To ensure their relevance for ocular MRI, their fundamental principles have been preserved, but their application has been reoriented to target key ocular structures instead
+
+\begin{itemize}
+    \item \textbf{Contrast-to-Noise Ratio (CNR) and Coefficient of Joint Variation (CJV):}
+        \begin{itemize}
+            \item \textit{Original Context (Brain):} These metrics assessed the contrast and signal homogeneity/variability between GM and WM.
+            \item \textit{Ocular Adaptation:} For eye imaging, these metrics is adapted to evaluate the relationship between the \textbf{LENS} and the surrounding \textbf{GLOBE} tissue. This involved modifying the metric computation to use the intensity statistics derived from the segmented LENS and GLOBE masks. The aim is to quantify the conspicuity of the lens within the globe and the homogeneity of these structures.
+        \end{itemize}
+
+    \item \textbf{Tissue-to-Maximum-Intensity Ratio (adapted from WM2MAX):}
+        \begin{itemize}
+            \item \textit{Original Context (Brain):} \texttt{wm2max} measured the ratio of the mean white matter intensity to a high percentile of the total image intensity, often an indicator of signal saturation or abnormal hyperintensities.
+            \item \textit{Ocular Adaptation:} This concept is applied individually to both the \textbf{LENS} and the \textbf{GLOBE}. It calculates the ratio of the mean intensity within the specified ocular structure to the 99.95th percentile of intensity values across the entire processed eye image. This can help detect issues like unusually low signal within these structures or global image intensity artifacts.
+        \end{itemize}
+    
+    \item \textbf{Signal-to-Noise Ratio - Dietrich's Method (SNRd):}
+        \begin{itemize}
+            \item \textit{Original Context (Brain):} Calculated using the mean of a foreground tissue (e.g., GM) and noise statistics from an "air" mask outside the head.
+            \item \textit{Ocular Adaptation:} Applied to both \textbf{LENS} and \textbf{GLOBE} as foreground regions and with the \textbf{BGAIR}. 
+        \end{itemize}
+
+    \item \textbf{Foreground-Background Energy Ratio (FBER):}
+        \begin{itemize}
+            \item \textit{Original Context (Brain):} Ratio of mean energy within the head mask to energy outside (background air).
+            \item \textit{Ocular Adaptation:} Applied to both \textbf{LENS} and \textbf{GLOBE} as foreground regions and with the \textbf{BGAIR}. 
+        \end{itemize}
+        
+    \item \textbf{Entropy Focus Criterion (EFC):}
+        \begin{itemize}
+            \item \textit{Original Context (Brain):} A global image metric assessing ghosting and blurring from the entropy of all image intensities (excluding pure background frame).
+            \item \textit{Ocular Adaptation} Calculated on the entire preprocessed (cropped and right-eye filtered) eye image. The interpretation remains similar: lower values indicate sharper, less dispersed energy, implying better quality.
+        \end{itemize}
+        
+    \item \textbf{Residual Partial Volume Effect (RPVE):}
+        \begin{itemize}
+            \item \textit{Original Context (Brain):} Typically calculated for interfaces between major tissues like GM-WM or GM-CSF, representing the intensity difference or deviation at tissue boundaries.
+            \item \textit{Ocular Adaptation:} Implemented to assess interfaces relevant to the eye:
+                \begin{itemize}
+                    \item \texttt{rpve\_lens\_boundary}: Evaluates the intensity profile at the boundary of the LENS (interface with the surrounding GLOBE content).
+                    \item \texttt{rpve\_globe\_boundary}: Evaluates the outer boundary of the GLOBE with surrounding orbital tissues.
+                    \item \texttt{rpve\_globe\_lens\_interface}: Specifically focuses on the interface region between the GLOBE's internal structures and the LENS surface.
+                \end{itemize}
+        \end{itemize}
+\end{itemize}
+
+\subsection{New Eye-Specific Morphological IQMs}
+\label{ssec:new_eye_iqms}
+Consistent with the discussions in Chapter 2, it was determined that certain anatomical regions of the eye would benefit from specialized quality metrics. Consequently, the sphericity index and the lens aspect ratio were developed for this purpose. The following section details their capabilities regarding image quality:
+
+\subsubsection{Globe Sphericity (\texttt{seg\_globe\_sphericity})}
+This metric quantifies how closely the GLOBE segmentation resembles a perfect sphere. Deviations can indicate distortions, incomplete reconstruction, or other artifacts.
+The "sphericity" IQM quantifies the similarity of the GLOBE segmentation to a perfect sphere. Using the skimage library, we can obtain the volume (V) and the surface area (A). The sphericity index ($S$), as defined by \cite{bullard_defining_2013}, is a dimensionless quantity that describes how closely a given object resembles a perfect sphere.
+\begin{equation}
+    S = \frac{\pi^{1/3} (6V)^{2/3}}{A}
+    \label{eq:sphericity_index}
+\end{equation}
+Here, $V$ represents the volume and $A$ is the surface area of the object. A value close to 1 means that the segmentation is close to a perfect sphere, a 0 means a perfect plane
+
+\subsubsection{Lens Aspect Ratio (\texttt{seg\_lens\_aspect\_ratio})}
+This metric characterizes the shape of the lens, in particular its elongation, thanks to the ratio between its major axis and its minor axis. This IQM is useful because a good segmentation of the lens is generally ellipsoidal in shape, while a bad segmentation of the lens has more of a sphere shape.
+
+We use skimage.measure.regionprops\_table to obtain the eigenvalues of the inertia tensor. The lens aspect ratio, calculated as the ratio of the square root of the minimum to the maximum eigenvalues of the second moment matrix.
+\begin{equation}
+    AspectRatio = \frac{\sqrt{\min(\lambda_i)}}{\sqrt{\max(\lambda_i)}}.
+    \label{eq:aspect_ratio_definition}
+\end{equation}
+Here, $\lambda_i$ represent the eigenvalues of the object's moment of inertia tensor. A value close to 1 means that the segmentation is close to a perfect sphere, a 0 means a perfect plane
+
+\section{Systematic Application of Segmentation-Based Statistics and Topology to All Eye Tissues}
+\label{sec:systematic_seg_iqms}
+The FetMRQC framework's capability to derive statistics for any segmented region was extended to all defined ocular tissues (LENS, GLOBE, OPTIC\_NERVE, FAT, MUSCLE).
+
+\begin{itemize}
+    \item \textbf{General Statistics (\texttt{seg\_sstats\_[TISSUE]\_*}, \texttt{seg\_volume\_[TISSUE]\_*}, \texttt{seg\_snr\_[TISSUE]\_*}):} The wrappers for calculating summary statistics (mean, median, std, percentiles, etc.), volume fractions, and tissue-specific Signal-to-Noise Ratios is adapted to iterate over all classes.
+
+    \item \textbf{Topological Metrics (\texttt{seg\_topology\_[TISSUE]\_*}, \texttt{seg\_topology\_mask\_*}):} The wrapper for topological metrics was similarly updated to process each individual eye tissue mask, as well as a combined mask of all eye tissues. It computes Betti numbers ($\beta_0, \beta_1, \beta_2$) and the Euler characteristic. This allows for the assessment of the structural integrity and connectivity of each segmented ocular component.
+\end{itemize}
+
+\subsection{Adaptation of Segmentation-Based Statistics}
+The generic IQM (seg) using segmentation, seg\_sstats, seg\_volume seg\_snr, seg\_topology, betty (b0, b1, b2) have been adapted to use the defined classes of eyes (LENS, GLOBE, OPTIC\_NERVE, FAT, and MUSCLE.). You can see in the appendix which class was used for each IQM.
+

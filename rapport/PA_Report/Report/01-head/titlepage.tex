@@ -1,0 +1,66 @@
+% File: 01-head/titlepage.tex
+% Uses the HES-SO Master thesis title page style you provided.
+% It relies on commands defined in your 00-settings/metadata.tex
+
+\newgeometry{margin=2.5cm} % Temporarily change margins for the title page
+{\fontfamily{phv}\fontseries{mc}\selectfont % Select Helvetica-like font, medium condensed
+    \begin{flushright} % Align the entire content block to the right (seems to be overall container alignment)
+        % Logo row
+        \begin{minipage}{0.5\textwidth}
+            \begin{flushleft} % Align content of this minipage to the left
+                 \includegraphics[width=0.9\textwidth]{img/mse_logo.png} % Needs img/mse_logo.png
+            \end{flushleft}
+        \end{minipage}% No space here
+        \begin{minipage}{0.5\textwidth}
+            \begin{flushright} % Align content of this minipage to the right
+                 \includegraphics[width=0.6\textwidth]{img/hesso_logo.png} % Needs img/hesso_logo.png
+            \end{flushright}
+        \end{minipage}
+        % End Logo row
+        
+        \begin{flushleft} % This block will be left-aligned relative to the page margins (within the overall flushright of the titlepage content)
+            \vspace*{2cm} % More space from top if logos are used, adjust as needed
+            \footnotesize % Small font for address
+            Master of Science HES-SO in Engineering \\
+            Av. de Provence 6 \\
+            CH-1007 Lausanne
+        \end{flushleft}
+        ~\\[0.5cm] % Vertical space
+        
+        {
+        \Huge Master of Science HES-SO in Engineering\\[0.5cm]
+        }
+        
+        {
+        \LARGE Orientation: \Orientation\\[0.5cm] % From metadata.tex
+        ~\\[1cm]
+        }
+        % Title
+        {
+            \Huge \bfseries % Added \bfseries for bold title
+            \ThesisTitle \\[1.5cm] % From metadata.tex
+        }
+        {
+            \large
+            Author:\\[-0.3cm] % Adjust spacing
+            \Huge \Author \\[0.8cm] % From metadata.tex
+        }
+        {
+            \large
+            Under the direction of: \\ % Or "Supervisor:"
+            \Advisor \\ % From metadata.tex
+            \AdvisorResearchUnit \\[0.5cm] % From metadata.tex
+        }
+        {
+            \large
+            External expert: \\
+            \Expert % From metadata.tex
+        }
+        \vfill % Pushes subsequent content to the bottom
+        
+        % Bottom of the page
+        {\large \Place, HES-SO//Master, \Date} % From metadata.tex
+        
+    \end{flushright}
+}
+\restoregeometry % Restore original page margins defined by geometry package

@@ -8,7 +8,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style_2.css">
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
@@ -20,14 +20,15 @@
                 <div class="logo-area">
                     <h1>Labelisation des images de rivière</h1>
                 </div>
-                <div class="actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <button id="btn-config-workspace" class="tech-btn primary" style="width: 100%;">CHOISIR RÉPERTOIRE
-                        DE TRAVAIL</button>
-                    <button id="btn-load-existing" class="tech-btn primary" style="width: 100%;">OUVRIR DOSSIER
-                        EXISTANT</button>
-                    <button id="import-btn" class="tech-btn primary" style="width: 100%;">NOUVEL IMPORT
-                        D'IMAGES</button>
-                    <button id="export-btn" class="tech-btn primary" disabled style="width: 100%;">SAUVEGARDER</button>
+                <div class="actions-flow" style="display: flex; align-items: center; gap: 16px;">
+                    <button id="btn-config-workspace" class="tech-btn primary">RÉPERTOIRE DE TRAVAIL</button>
+                    <span style="color: var(--color-accent); font-weight: bold; font-size: 20px;">➔</span>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button id="import-btn" class="tech-btn primary">NOUVELLES IMAGES</button>
+                        <button id="btn-load-existing" class="tech-btn primary">DOSSIER EXISTANT</button>
+                    </div>
+                    <span style="color: var(--color-accent); font-weight: bold; font-size: 20px;">➔</span>
+                    <button id="export-btn" class="tech-btn primary" disabled>SAUVEGARDER LES RÉSULTATS</button>
                 </div>
             </div>
 
@@ -49,7 +50,7 @@
         <main class="content-grid">
             <div class="empty-state" id="empty-state">
                 <div class="console-text">
-                    EN ATTENTE DE DONNÉES...
+                    EN ATTENTE DE DONNÉES
                 </div>
             </div>
 
@@ -59,8 +60,15 @@
                     <div class="loader-box">
                         <div class="spinner-tech"></div>
                         <h2>PROCESSUS EN COURS</h2>
-                        <p>> Modèle : PyTorch EfficientNet_V2</p>
-                        <p>> Fichiers traités : <span id="loading-count" class="highlight-text">0</span></p>
+                        <div class="progress-container"
+                            style="width: 100%; max-width: 400px; height: 10px; background: var(--border-light); border-radius: 5px; margin: 10px 0; overflow: hidden;">
+                            <div id="loading-bar"
+                                style="width: 0%; height: 100%; background: var(--color-polluted); transition: width 0.3s ease-out;">
+                            </div>
+                        </div>
+                        <p>Modèle : PyTorch EfficientNet_V2</p>
+                        <p>Fichiers traités : <span id="loading-count" class="highlight-text">0</span></p>
+                        <p>Temps estimé restant : <span id="loading-eta" class="highlight-cyan">Calcul...</span></p>
                     </div>
                 </div>
 
@@ -69,12 +77,12 @@
                 <section class="tech-panel">
                     <div class="panel-header">
                         <div class="header-left">
-                            <h2>ANALYSE DE CONFIANCE (ROC-AUC)</h2>
+                            <h2>ANALYSE DE LA POLLUTION DE L'EAU</h2>
                             <div style="color: var(--color-accent); font-weight: bold; font-size: 14px; margin-bottom: 4px;"
                                 id="analysis-period">Période : -- au --</div>
                             <div class="legend">
-                                <span class="legend-item polluted">■ DÉTECTION (POLLUÉ)</span>
-                                <span class="legend-item" style="color: #0f172a; font-weight: bold;">─ CONFIANCE
+                                <span class="legend-item polluted"> DÉTECTION (POLLUÉ)</span>
+                                <span class="legend-item" style="color: #000000; font-weight: bold;">─ CONFIANCE
                                     IA</span>
                             </div>
                         </div>
@@ -87,8 +95,8 @@
                             <input type="range" id="threshold-slider" min="0.01" max="0.99" step="0.01" value="0.50"
                                 disabled>
                             <button id="lock-threshold-btn" class="tech-btn secondary"
-                                style="padding: 2px 6px; font-size: 14px;" title="Déverrouiller le curseur">🔒
-                                VERROUILLÉ</button>
+                                style="padding: 2px 6px; font-size: 14px;" title="Déverrouiller le curseur">🔒 SEUIL
+                                VERROUILLÉ (CLIQUEZ POUR DÉBLOQUER)</button>
                         </div>
                     </div>
 
@@ -122,6 +130,10 @@
                         <div style="display: flex; align-items: center; gap: 16px;">
                             <h2>INSPECTION MANUELLE : <span id="zone-title" class="highlight-cyan"></span></h2>
                         </div>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-left: auto; margin-right: 24px;">
+                            <span style="font-size: 11px; font-weight: 800; color: var(--text-muted); letter-spacing: 0.05em;">IMAGES PAR LIGNE</span>
+                            <input type="range" id="grid-size-slider" min="1" max="6" step="1" value="3" style="width: 100px; cursor: pointer;">
+                        </div>
                         <div class="bulk-actions" style="display: flex; gap: 8px;">
                             <button id="bulk-clean-btn" class="tech-btn outline"
                                 style="color: var(--color-clean); border-color: var(--color-clean);">TOUT MARQUER 0
@@ -146,7 +158,7 @@
         <img class="modal-content" id="modal-img">
     </div>
 
-    <script src="app_2.js"></script>
+    <script src="app.js"></script>
 </body>
 
 </html>

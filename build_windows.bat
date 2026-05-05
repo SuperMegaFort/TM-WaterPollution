@@ -7,13 +7,12 @@ echo Construction de l'executable WaterWatcher pour Windows...
 
 pyinstaller --noconfirm --windowed --name "WaterWatcher" ^
     --paths "." ^
-    --hidden-import "UI.server_2" ^
-    --hidden-import "UI.server" ^
-    --add-data "UI/index_2.html;UI" ^
-    --add-data "UI/style_2.css;UI" ^
-    --add-data "UI/app_2.js;UI" ^
+    --hidden-import "UI_V2.server" ^
+    --add-data "UI_V2/index.html;UI_V2" ^
+    --add-data "UI_V2/style.css;UI_V2" ^
+    --add-data "UI_V2/app.js;UI_V2" ^
     --add-data "pipeline;pipeline" ^
-    --add-data "models;models" ^
+    --add-data "standalone/best_model.pth;standalone" ^
     --hidden-import "torch" ^
     --hidden-import "torchvision" ^
     --hidden-import "piexif" ^

@@ -1,0 +1,69 @@
+\chapter{Methods}
+\label{chap:methods}
+
+This chapter details the methodology employed for the classification models used to detect poor quality ocular MRI images. It describes the data pipeline, from initial data loading and preprocessing to model training, hyperparameter tuning, and evaluation strategies.
+
+\section{Data Processing}
+\label{sec:data_processing}
+
+\subsection{Dataset}
+\label{ssec:data_acquisition_methods} % Changed label
+The project dataset is a CSV file containing the ratings of the 83 subjects as well as the various calculated IQMs (as seen previously). Ratings range from 0 to 4, where 0 is the minimum score and 4 is the maximum score. For the following, we will label "excluded" for scores of 0-1, "poor" for scores of 1-2, "acceptable" for scores of 2-3, and "excellent" for scores of 3-4.
+
+% \subsection{Target Variable Preparation}
+% \label{ssec:target_variable_preparation_methods} % Changed label
+
+% The continuous quality ratings were transformed into target variables suitable for the different classification strategies.
+% For \textbf{binary classification models}, the "rating" column was dichotomized based on the specific threshold defined for each scenario. A new binary target column was generated, where images with ratings greater than or equal to the threshold were labeled "accept" (numeric value 1), and images with ratings below the threshold were labeled "reject" (numeric value 0).
+% For \textbf{multi-class classification models}, the continuous "rating" was discretized into the four predefined quality classes: "exclude," "poor," "acceptable," and "excellent," numerically represented as 0, 1, 2, and 3, respectively. These multi-class labels served as the primary target for the initial classification stage. Subsequently, for the final binary "accept/reject" determination, these predicted multi-class labels were re-grouped. The specific multi-classes constituting the "reject" category were configurable, allowing for flexibility in defining the final binary outcome (e.g., mapping "exclude" and "poor" to "reject", and "acceptable" and "excellent" to "accept").
+
+\subsection{The correlation-based feature selection method}
+\label{ssec:feature_preparation_methods}
+As discussed in the previous chapter, the dataset includes a large number of IQMs, which serve as input features for the models. Since high correlation between features (multicollinearity) can lead to model instability and potentially decrease predictive accuracy, a feature selection step based on inter-IQM correlation was implemented for each scenario. This process involves calculating a cross-correlation matrix for all candidate IQMs. Pairs of IQMs with an absolute correlation coefficient above a specified threshold of 0.9 were identified as highly correlated. To reduce redundancy, one IQM from each pair was removed from the feature set. This procedure aims to produce a feature set with reduced multicollinearity for model training.
+
+\section{Pipeline Overview}
+\label{sec:pipeline_overview}
+The pipeline was designed to evaluate and compare different modeling approaches for assessing the quality of ocular MRI images. The main idea is to be able to classify images below a certain threshold value as rejectable. To achieve this, two main modeling strategies were investigated: direct binary classification and a multi-class classification approach followed by binary reclassification. These strategies were tested in different scenarios, involving different definitions of the “accept” and “reject” categories and variations in the feature sets.
+
+\subsection{Scenarios}
+\label{ssec:scenarios_methods} % Changed label to avoid conflict if ssec:scenarios is used elsewhere
+
+Here are the two scenarios that were evaluated for the direct binary classification strategy, using the 83-subject dataset:
+\begin{description}
+    \item[Scenario 1] The first scenario involves training/testing the model on the entire dataset using K-stratified cross-validation. In this scenario, images are defined as rejected if their continuous score is less than 1. The remaining images are defined as accepted.
+    \item[Scenario 2] The second scenario involves training/testing the model on the entire dataset using K-stratified cross-validation as well. Images are defined as rejected if their continuous score is less than 2; the remaining images are defined as accepted.
+\end{description}
+These two scenarios aim to determine the difference in model results between a case where the classes are unbalanced and a case where the classes are balanced.
+
+\subsection{The 2 models}
+
+% The continuous quality ratings were transformed into target variables suitable for the different classification strategies.
+% For \textbf{binary classification models}, the "rating" column was dichotomized based on the specific threshold defined for each scenario. A new binary target column was generated, where images with ratings greater than or equal to the threshold were labeled "accept" (numeric value 1), and images with ratings below the threshold were labeled "reject" (numeric value 0).
+% For \textbf{multi-class classification models}, the continuous "rating" was discretized into the four predefined quality classes: "exclude," "poor," "acceptable," and "excellent," numerically represented as 0, 1, 2, and 3, respectively. These multi-class labels served as the primary target for the initial classification stage. Subsequently, for the final binary "accept/reject" determination, these predicted multi-class labels were re-grouped. The specific multi-classes constituting the "reject" category were configurable, allowing for flexibility in defining the final binary outcome (e.g., mapping "exclude" and "poor" to "reject", and "acceptable" and "excellent" to "accept").
+
+Image classification is evaluated using two different models.
+\begin{description}
+    \item[binary classification models] The first is a binary classification model. It converts the image quality into a binary value according to a chosen threshold. The goal of the model is to predict the output as 1 "accept" or 0 "reject" based on the results of the IQM calculated on the images in the dataset.
+    \item[multi-class classification models] The second is a multi-class classification (regression) model. The goal of the model is to predict the output as a continuous value from 0 to 4. Then, after the model's prediction, the result is binarized according to a specific chosen threshold. The goal here is to predict two binary classes: 1 "accept" and 0 "reject," as in the first model, but this time using regression.
+\end{description}
+
+
+\section{Model Training and Hyperparameter Optimisation}
+\label{sec:model_training_optimisation}
+
+\subsection{Data Splitting and Scaling}
+\label{ssec:data_splitting_scaling_methods} % Changed label
+The prepared dataset, consisting of the selected features (\texttt{X}) and the corresponding target variable (\texttt{y}), was partitioned into training and testing subsets. A standard split of 70\% for the training set and 30\% for the test set was employed. For classification tasks, this split was performed using stratification based on the target variable to ensure that the class proportions were maintained in both the training and test sets, which is particularly important for imbalanced datasets. Following the split, the numeric features in both the training (\texttt{X\_train}) and testing (\texttt{X\_test}) sets were scaled using the \texttt{StandardScaler}. This scaling method standardizes features by removing the mean and scaling to unit variance. The scaler was fitted exclusively on the training data to prevent data leakage from the test set, and then used to transform both the training and test feature sets (\texttt{X\_train\_scaled} and \texttt{X\_test\_scaled}).
+
+\subsection{Model Selection}
+\label{ssec:model_selection_methods} % Changed label
+The primary classification model explored in this project was the \texttt{RandomForestClassifier}, a robust ensemble learning method available in the scikit-learn library. This selection was guided by its successful application in the related \textit{fetal-brain\_sr} project, which served as a foundational reference for this work.
+
+\subsection{Cross-Validation Strategy}
+\label{ssec:cv_strategy_methods} % Changed label
+Considering the relatively small dataset size of 83 subjects and the presence of notable class imbalance in some experimental scenarios (such as Scenario 1 for binary classification, which had only 5 "exclude" instances), \texttt{StratifiedKFold} cross-validation with $k=5$ folds was the predominant strategy. This approach ensures that each fold of the cross-validation maintains a proportional representation of each class from the overall dataset, leading to more reliable model evaluation, especially with imbalanced class distributions. For one specific binary classification scenario ("Model4"), standard \texttt{KFold} cross-validation was also investigated for comparison.
+
+\subsection{Hyperparameter Optimisation}
+\label{ssec:hyperparameter_optimisation} % Changed label
+To determine the optimal set of hyperparameters for the \texttt{RandomForestClassifier}, \texttt{GridSearchCV} was utilized. This technique systematically works through multiple combinations of parameter tunes, cross-validating as it goes to determine which tune gives the best performance. The grid of parameters explored included \texttt{n\_estimators} (number of trees in the forest, tested values: [50, 100, 200]), \texttt{max\_depth} (maximum depth of the trees, tested values: [None, 10, 20]), \texttt{min\_samples\_split} (minimum number of samples required to split an internal node, tested values: [2, 5, 10]), and \texttt{min\_samples\_leaf} (minimum number of samples required to be at a leaf node, tested values: [1, 2, 4]).
+The performance metric used to guide the grid search varied by task: \texttt{roc\_auc} was used for binary classification scenarios, while \texttt{f1\_macro} was employed for the initial multi-class classification stage (predicting the four quality categories). Furthermore, to mitigate the impact of imbalanced class distributions during training, the \texttt{RandomForestClassifier} was configured with the \texttt{class\_weight='balanced'} parameter, which automatically adjusts class weights inversely proportional to their frequencies.

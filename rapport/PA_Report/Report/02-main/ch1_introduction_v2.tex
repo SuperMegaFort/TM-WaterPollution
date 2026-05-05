@@ -1,0 +1,17 @@
+\chapter{Introduction}
+\label{chap:introduction}
+
+Magnetic Resonance Imaging (MRI) has consolidated its role as a powerful, non-invasive tool for visualizing the complex anatomy of the human eye and its surrounding orbital structures \cite{townsend_clinical_2008, fanea_review_2012}. Its applications in ophthalmology are continually expanding, offering crucial insights into the diagnosis, monitoring, and understanding of a wide range of ocular pathologies \cite{duong_magnetic_2014, niendorf_ophthalmic_2021}. The advent of higher-resolution techniques promises to reveal even finer anatomical details, which is essential for assessing subtle structural changes and advancing research into ocular physiology, including functional studies like retinal fMRI and vascular oxygenation \cite{duong_functional_2002, zhang_magnetic_2011}.
+
+However, the diagnostic and research utility of ocular MRI is fundamentally dependent on pristine image quality. The unique characteristics of the eye—its small size, constant involuntary motion, and complex multi-layered composition—present formidable imaging challenges \cite{fanea_review_2012, duong_magnetic_2014}. Image quality is frequently degraded by various artifacts, including those from involuntary saccades and blinks \cite{franceschiello_3-dimensional_2020}, as well as complications from MRI acquisition itself, such as susceptibility artifacts and trade-offs between resolution, signal-to-noise ratio (SNR), and scan time \cite{niendorf_ophthalmic_2021}. These factors can obscure critical diagnostic information, lead to misinterpretation, and ultimately reduce the reliability of quantitative measurements \cite{schmidt_association_2019}. Therefore, robust quality control (QC) is not just beneficial, but essential for ensuring data fidelity.
+
+The current standard, manual QC by expert raters, is a significant bottleneck. This process is inherently subjective, time-consuming, and suffers from poor inter- and intra-rater variability, making it impractical for the large datasets required for modern clinical and research studies. While automated QC frameworks like MRIQC have revolutionized neuroimaging \cite{esteban_mriqc_2017}, a dedicated, validated tool for ocular MRI is conspicuously absent. The unique anatomy, image contrasts, and artifact profiles of the eye render the direct application of existing tools suboptimal.
+
+This project, MREyeQC, was conceived to fill this critical gap. Our primary objective is to develop and validate a robust, automated QC pipeline specifically tailored for ocular MRI by adapting the FetMRQC framework \cite{noauthor_medical-image-analysis-laboratoryfetmrqc_sr_nodate}. To achieve this, we will:
+\begin{enumerate}
+    \item Define and implement a comprehensive suite of Image Quality Measures (IQMs) that capture general image properties and common artifacts.
+    \item Develop novel, anatomy-specific IQMs derived from the segmentation of key ocular structures, such as the lens and globe.
+    \item Utilize these quantitative IQMs to train and validate a machine learning model capable of predicting image quality with an accuracy and consistency that rivals or exceeds human experts.
+\end{enumerate}
+
+By automating the quality assessment process, MREyeQC aims to enhance the reliability and efficiency of ocular MRI analysis, thereby facilitating more robust and scalable research in ophthalmology.
