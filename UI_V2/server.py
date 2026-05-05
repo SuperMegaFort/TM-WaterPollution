@@ -222,11 +222,11 @@ def import_and_predict():
             prefix = mod_time.strftime("%d%m%Y_%H%M%S")
             new_name = f"{prefix}_{river}{ext}"
             
-        dest_path = os.path.join(dest_dir, new_name)
-        if not os.path.exists(dest_path):
-            shutil.copy2(f, dest_path)
-            
         try:
+            dest_path = os.path.join(dest_dir, new_name)
+            if not os.path.exists(dest_path):
+                shutil.copy2(f, dest_path)
+                
             # 1. Ouverture et lecture en mémoire sécurisée
             with Image.open(dest_path) as img:
                 img_rgb = img.convert("RGB")
@@ -245,7 +245,10 @@ def import_and_predict():
             if avg_brightness < 40 or color_variance < 3.0:
                 os.remove(dest_path) 
                 print(f"Image de nuit/IR supprimée : {new_name}")
-                return None  # <-- TRES IMPORTANT : Continue la boucle, ne fais pas de 'return'
+                return {
+                    "name": new_name, "path": dest_path, "date": "N/A", "time": "N/A",
+                    "score": 0, "label": 0, "status": "night"
+                }
                 
             # 3. Inférence PyTorch sur l'image valide
             input_tensor = val_transform(img_rgb).unsqueeze(0).to(device)
@@ -266,7 +269,10 @@ def import_and_predict():
             }
         except Exception as e:
             print(f"Erreur d'inférence avec {new_name}: {e}")
-            return None
+            return {
+                "name": new_name, "path": dest_path, "date": "N/A", "time": "N/A",
+                "score": 0, "label": 0, "status": f"error: {str(e)}"
+            }
 
     max_threads = min(32, (os.cpu_count() or 1) * 2)
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
@@ -322,9 +328,9 @@ def import_and_predict():
 
             # 3. Formatage universel avec le Score
             tag_text = "POLLUE" if r.get('label') == 1 else "PROPRE"
-            score_val = r.get('score', 0.0)
+            score_val = round(r.get('score', 0.0), 2)
             
-            info_str = f"Status: {tag_text} | Confiance: {score_val:.4f}"
+            info_str = f"Status: {tag_text} | Confiance: {score_val:.2f}"
             
             # 4. Standard EXIF (Mac/Linux)
             exif_dict["0th"][piexif.ImageIFD.ImageDescription] = info_str.encode('utf-8')
@@ -379,7 +385,7 @@ def save_labels():
 
                         ai_val = 1 if item.get('ai_label') == 1 else 0
                         user_val = 1 if item.get('label') == 1 else 0
-                        score_val = float(item.get('score', 0.0))
+                        score_val = round(float(item.get('score', 0.0)), 2)
                         json_tag = json.dumps({"user": user_val, "ai": ai_val, "score": score_val})
                         
                         exif_dict["0th"][piexif.ImageIFD.ImageDescription] = json_tag.encode('utf-8')
