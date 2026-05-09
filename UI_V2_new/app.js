@@ -646,31 +646,7 @@ const axisSyncPlugin = {
     }
 };
 
-const thresholdPlugin = {
-    id: 'thresholdLine',
-    beforeDraw: (chart) => {
-        const { ctx, chartArea: { left, right }, scales: { y } } = chart;
-        const thresholdY = currentThreshold * 100;
-        const yPos = y.getPixelForValue(thresholdY);
-        
-        ctx.save();
-        ctx.beginPath();
-        ctx.strokeStyle = '#000000'; // bold black
-        ctx.lineWidth = 2; // bold
-        ctx.setLineDash([8, 6]); // dashed
-        ctx.moveTo(left, yPos);
-        ctx.lineTo(right, yPos);
-        ctx.stroke();
-        
-        // Optionnel : Ajouter le texte "Seuil"
-        ctx.fillStyle = '#000000';
-        ctx.font = 'bold 10px "Inter", sans-serif';
-        ctx.fillText(`SEUIL (${Math.round(thresholdY)}%)`, left + 5, yPos - 5);
-        ctx.restore();
-    }
-};
-
-Chart.register(highlightPlugin, sliderAlignmentPlugin, daySeparatorPlugin, axisSyncPlugin, thresholdPlugin);
+Chart.register(highlightPlugin, sliderAlignmentPlugin, daySeparatorPlugin, axisSyncPlugin);
 
 // --- RENDER CHART ---
 function renderChart() {

@@ -64,7 +64,7 @@ def index():
 
 # --- CHARGEMENT DU MODÈLE IA ---
 # MODIFIE CETTE LIGNE AVEC LE CHEMIN EXACT DE TON FICHIER .pth SI BESOIN
-MODEL_PATH = os.path.join(BASE_DIR, "standalone", "best_model.pth")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "grl", "no_mask", "no_grl", "train_all", "best_grl_model.pth")
 device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
 print(f"Chargement du modèle : {MODEL_PATH} sur {device}...")
@@ -331,7 +331,6 @@ def import_and_predict():
             score_val = round(r.get('score', 0.0), 2)
             
             info_str = f"Status: {tag_text} | Confiance: {score_val:.2f}"
-            
             json_tag = json.dumps({"user": r.get('label', 0), "ai": r.get('label', 0), "score": score_val})
             
             # 4. Standard EXIF (Mac/Linux)
